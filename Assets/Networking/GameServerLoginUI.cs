@@ -150,7 +150,10 @@ public sealed class GameServerLoginUI : MonoBehaviour
     private string _lastSnapshotSummary = string.Empty;
     private readonly Dictionary<string, GameObject> _monsterViews =
         new Dictionary<string, GameObject>();
-    private Material _monsterMaterial;
+    private readonly Dictionary<string, Material> _monsterMaterials =
+        new Dictionary<string, Material>();
+    private readonly Dictionary<string, Texture2D> _monsterTextures =
+        new Dictionary<string, Texture2D>();
 
     private TcpClient _client;
     private NetworkStream _stream;
@@ -232,11 +235,24 @@ public sealed class GameServerLoginUI : MonoBehaviour
     private void OnDestroy()
     {
         DisconnectFromServer(false);
-        if (_monsterMaterial != null)
+        foreach (Material material in _monsterMaterials.Values)
         {
-            Destroy(_monsterMaterial);
-            _monsterMaterial = null;
+            if (material != null)
+            {
+                Destroy(material);
+            }
         }
+        _monsterMaterials.Clear();
+
+        foreach (Texture2D texture in _monsterTextures.Values)
+        {
+            if (texture != null)
+            {
+                Destroy(texture);
+            }
+        }
+        _monsterTextures.Clear();
+
         if (Instance == this)
         {
             Instance = null;
@@ -768,8 +784,13 @@ public sealed class GameServerLoginUI : MonoBehaviour
             visibleMonsterIDs.Add(monster.id);
             if (!_monsterViews.TryGetValue(monster.id, out GameObject view) || view == null)
             {
-                view = GameObject.CreatePrimitive(PrimitiveType.Capsule);
-                view.name = "ServerMonster_" + monster.id;
+                // ID 1 is a warning-cube enemy; ID 2 is the yellow smiley sphere.
+                PrimitiveType primitiveType = monster.id == "1"
+                    ? PrimitiveType.Cube
+                    : PrimitiveType.Sphere;
+                view = GameObject.CreatePrimitive(primitiveType);
+                view.name = monster.name + " (ID " + monster.id + ")";
+
                 Collider collider = view.GetComponent<Collider>();
                 if (collider != null)
                 {
@@ -779,37 +800,32 @@ public sealed class GameServerLoginUI : MonoBehaviour
                 Renderer renderer = view.GetComponent<Renderer>();
                 if (renderer != null)
                 {
-                    if (_monsterMaterial == null)
+                    Material material = GetMonsterMaterial(monster.id);
+                    if (material != null)
                     {
-                        Shader shader = Shader.Find("Universal Render Pipeline/Lit");
-                        if (shader == null)
-                        {
-                            shader = Shader.Find("Standard");
-                        }
-                        if (shader != null)
-                        {
-                            _monsterMaterial = new Material(shader)
-                            {
-                                color = new Color(0.78f, 0.16f, 0.12f)
-                            };
-                        }
-                    }
-
-                    if (_monsterMaterial != null)
-                    {
-                        renderer.sharedMaterial = _monsterMaterial;
+                        renderer.sharedMaterial = material;
                     }
                 }
 
+                CreateMonsterNameLabel(view, monster);
                 _monsterViews[monster.id] = view;
             }
 
-            // Test monster positions are ground-surface coordinates; a Unity capsule's
-            // pivot is at its center, so raise it by one unit to make it stand on the floor.
+            if (view.name != monster.name + " (ID " + monster.id + ")")
+            {
+                view.name = monster.name + " (ID " + monster.id + ")";
+            }
+
+            float modelSize = monster.id == "2" ? 1.4f : 1.2f;
+            view.transform.localScale = Vector3.one * modelSize;
+
+            // The server supplies the terrain surface coordinate. Put the primitive's
+            // center half its diameter above the ground so the model rests on the surface.
             view.transform.position = new Vector3(
                 monster.position.x,
-                monster.position.y + 1f,
+                monster.position.y + modelSize * 0.5f,
                 monster.position.z);
+
             if (monster.rotation != null)
             {
                 Quaternion rotation = new Quaternion(
@@ -818,6 +834,18 @@ public sealed class GameServerLoginUI : MonoBehaviour
                 view.transform.rotation = rotation.sqrMagnitude > 0.0001f
                     ? Quaternion.Normalize(rotation)
                     : Quaternion.identity;
+            }
+
+            Transform labelTransform = view.transform.Find("NameLabel");
+            if (labelTransform != null)
+            {
+                labelTransform.localPosition = new Vector3(
+                    0f, (modelSize * 0.5f + 0.45f) / modelSize, 0f);
+                TextMesh textMesh = labelTransform.GetComponent<TextMesh>();
+                if (textMesh != null)
+                {
+                    textMesh.text = monster.name + "  [" + monster.id + "]";
+                }
             }
         }
 
@@ -848,6 +876,184 @@ public sealed class GameServerLoginUI : MonoBehaviour
         {
             _lastSnapshotSummary = summary;
             Debug.Log("GameServer: world snapshot received; " + summary);
+        }
+    }
+
+    private Material GetMonsterMaterial(string monsterID)
+    {
+        if (_monsterMaterials.TryGetValue(monsterID, out Material existing) && existing != null)
+        {
+            return existing;
+        }
+
+        bool isSmiley = monsterID == "2";
+        Texture2D texture = isSmiley ? CreateSmileyTexture() : CreateWarningTexture();
+        texture.name = isSmiley ? "Enemy2_YellowSmileyTexture" : "Enemy1_WarningTexture";
+
+        Shader shader = Shader.Find("Universal Render Pipeline/Lit");
+        if (shader == null)
+        {
+            shader = Shader.Find("Standard");
+        }
+        if (shader == null)
+        {
+            shader = Shader.Find("Unlit/Texture");
+        }
+        if (shader == null)
+        {
+            Destroy(texture);
+            Debug.LogWarning("GameServer: no compatible shader found for test monsters.");
+            return null;
+        }
+
+        Material material = new Material(shader);
+        material.name = isSmiley ? "Enemy2_YellowSmileyMaterial" : "Enemy1_WarningMaterial";
+        material.mainTexture = texture;
+        material.color = Color.white;
+
+        if (isSmiley && material.HasProperty("_EmissionColor"))
+        {
+            material.EnableKeyword("_EMISSION");
+            material.SetColor("_EmissionColor", new Color(0.35f, 0.28f, 0f));
+        }
+
+        _monsterTextures[monsterID] = texture;
+        _monsterMaterials[monsterID] = material;
+        return material;
+    }
+
+    private static Texture2D CreateWarningTexture()
+    {
+        const int size = 128;
+        Texture2D texture = new Texture2D(size, size, TextureFormat.RGBA32, false);
+        Color32[] pixels = new Color32[size * size];
+        Color32 dark = new Color32(34, 39, 45, 255);
+        Color32 orange = new Color32(255, 145, 20, 255);
+        Color32 light = new Color32(235, 235, 220, 255);
+
+        for (int y = 0; y < size; y++)
+        {
+            for (int x = 0; x < size; x++)
+            {
+                // Diagonal charcoal/orange hazard stripes with a thin light border.
+                Color32 color = (((x + y) / 15) % 2 == 0) ? orange : dark;
+                if (x < 4 || x >= size - 4 || y < 4 || y >= size - 4)
+                {
+                    color = light;
+                }
+                pixels[y * size + x] = color;
+            }
+        }
+
+        texture.SetPixels32(pixels);
+        texture.wrapMode = TextureWrapMode.Repeat;
+        texture.filterMode = FilterMode.Bilinear;
+        texture.Apply(false, true);
+        return texture;
+    }
+
+    private static Texture2D CreateSmileyTexture()
+    {
+        const int size = 128;
+        Texture2D texture = new Texture2D(size, size, TextureFormat.RGBA32, false);
+        Color32[] pixels = new Color32[size * size];
+        Color32 yellow = new Color32(255, 218, 0, 255);
+        Color32 black = new Color32(28, 24, 12, 255);
+        Color32 highlight = new Color32(255, 247, 130, 255);
+
+        for (int y = 0; y < size; y++)
+        {
+            for (int x = 0; x < size; x++)
+            {
+                float u = (x + 0.5f) / size;
+                float v = (y + 0.5f) / size;
+                Color32 color = yellow;
+
+                // A soft upper-left glint makes the yellow ball read as glossy.
+                float highlightDistance = (u - 0.25f) * (u - 0.25f) +
+                    (v - 0.82f) * (v - 0.82f);
+                if (highlightDistance < 0.0035f)
+                {
+                    color = highlight;
+                }
+
+                float leftEye = (u - 0.34f) * (u - 0.34f) +
+                    (v - 0.63f) * (v - 0.63f);
+                float rightEye = (u - 0.66f) * (u - 0.66f) +
+                    (v - 0.63f) * (v - 0.63f);
+                if (leftEye < 0.0020f || rightEye < 0.0020f)
+                {
+                    color = black;
+                }
+
+                // Draw a simple U-shaped smile in the center of the texture.
+                if (u >= 0.28f && u <= 0.72f)
+                {
+                    float t = (u - 0.28f) / 0.44f;
+                    float smileY = 0.43f - 0.18f * Mathf.Sin(t * Mathf.PI);
+                    if (Mathf.Abs(v - smileY) < 0.016f)
+                    {
+                        color = black;
+                    }
+                }
+
+                pixels[y * size + x] = color;
+            }
+        }
+
+        texture.SetPixels32(pixels);
+        texture.wrapMode = TextureWrapMode.Repeat;
+        texture.filterMode = FilterMode.Bilinear;
+        texture.Apply(false, true);
+        return texture;
+    }
+
+    private static void CreateMonsterNameLabel(GameObject view, WorldMonsterData monster)
+    {
+        GameObject labelObject = new GameObject("NameLabel");
+        labelObject.transform.SetParent(view.transform, false);
+
+        float modelSize = monster.id == "2" ? 1.4f : 1.2f;
+        labelObject.transform.localPosition = new Vector3(
+            0f, (modelSize * 0.5f + 0.45f) / modelSize, 0f);
+        labelObject.transform.localScale = Vector3.one / modelSize;
+
+        TextMesh label = labelObject.AddComponent<TextMesh>();
+        label.text = monster.name + "  [" + monster.id + "]";
+        label.anchor = TextAnchor.MiddleCenter;
+        label.alignment = TextAlignment.Center;
+        label.fontSize = 42;
+        label.characterSize = 0.1f;
+        label.color = Color.white;
+        label.richText = false;
+    }
+
+    private void LateUpdate()
+    {
+        Camera currentCamera = Camera.main;
+        if (currentCamera == null)
+        {
+            return;
+        }
+
+        foreach (GameObject view in _monsterViews.Values)
+        {
+            if (view == null)
+            {
+                continue;
+            }
+
+            Transform label = view.transform.Find("NameLabel");
+            if (label == null)
+            {
+                continue;
+            }
+
+            Vector3 directionToCamera = currentCamera.transform.position - label.position;
+            if (directionToCamera.sqrMagnitude > 0.0001f)
+            {
+                label.rotation = Quaternion.LookRotation(directionToCamera, Vector3.up);
+            }
         }
     }
 
