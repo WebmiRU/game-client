@@ -10,6 +10,7 @@ public sealed class MonsterDeathPresentation : MonoBehaviour
 {
     [SerializeField, Min(0.2f)] private float dogFallDuration = 1f;
     [SerializeField, Min(0.2f)] private float faceChangeDuration = 1f;
+    [SerializeField, Min(0.1f)] private float spawnFadeDuration = 0.15f;
     [SerializeField, Min(0f)] private float corpseFadeDelay = 6f;
     [SerializeField, Min(0.2f)] private float corpseFadeDuration = 1f;
 
@@ -25,6 +26,8 @@ public sealed class MonsterDeathPresentation : MonoBehaviour
     private readonly List<Vector3> _sadEndPositions = new List<Vector3>();
 
     private bool _isDead;
+    private bool _isSpawning;
+    private float _spawnStartedAt;
     private bool _fadePrepared;
     private bool _renderersHidden;
     private string _templateID = string.Empty;
@@ -37,16 +40,62 @@ public sealed class MonsterDeathPresentation : MonoBehaviour
 
     public bool IsDead => _isDead;
 
-    /// <summary>Applies a server-owned alive/dead state and aligns late-joining observers.</summary>
-    public void ApplyServerState(bool alive, string templateID, float deathElapsedSeconds)
+    /// <summary>Applies server-owned spawn/death state for this particular monster instance.</summary>
+    public void ApplyServerState(
+        bool alive,
+        string templateID,
+        float deathElapsedSeconds,
+        bool spawning)
     {
-        if (alive || _isDead)
+        _templateID = templateID ?? string.Empty;
+        if (_isDead)
         {
             return;
         }
 
-        _templateID = templateID ?? string.Empty;
-        BeginDeath(Mathf.Max(0f, deathElapsedSeconds));
+        if (!alive)
+        {
+            BeginDeath(Mathf.Max(0f, deathElapsedSeconds));
+            return;
+        }
+
+        if (spawning)
+        {
+            BeginSpawn();
+        }
+    }
+
+    private void BeginSpawn()
+    {
+        if (_isSpawning || _isDead)
+        {
+            return;
+        }
+
+        _isSpawning = true;
+        // Start the short fade when this client first learns about the new instance.
+        // Snapshot delivery may lag behind the server's initial fall by up to one poll interval.
+        _spawnStartedAt = Time.time;
+        PrepareFadeMaterials();
+        SetFadeAlpha(0f);
+        UpdateSpawnVisuals();
+    }
+
+    private void UpdateSpawnVisuals()
+    {
+        if (!_isSpawning || _isDead)
+        {
+            return;
+        }
+
+        float duration = Mathf.Max(0.1f, spawnFadeDuration);
+        float progress = Mathf.Clamp01((Time.time - _spawnStartedAt) / duration);
+        SetFadeAlpha(progress);
+        if (progress >= 1f)
+        {
+            _isSpawning = false;
+            ConfigureOpaqueMaterials();
+        }
     }
 
     private void BeginDeath(float elapsedAtReceipt)
@@ -57,6 +106,7 @@ public sealed class MonsterDeathPresentation : MonoBehaviour
         }
 
         _isDead = true;
+        _isSpawning = false;
         _deathStartedAt = Time.time - elapsedAtReceipt;
         _standingPosition = transform.position;
         _standingRotation = transform.rotation;
@@ -80,6 +130,8 @@ public sealed class MonsterDeathPresentation : MonoBehaviour
 
         CacheSmileDots();
         PrepareFadeMaterials();
+        ConfigureFadeMaterialsTransparent();
+        SetFadeAlpha(1f);
         UpdateDeathVisuals();
     }
 
@@ -88,6 +140,10 @@ public sealed class MonsterDeathPresentation : MonoBehaviour
         if (_isDead)
         {
             UpdateDeathVisuals();
+        }
+        else if (_isSpawning)
+        {
+            UpdateSpawnVisuals();
         }
     }
 
@@ -177,41 +233,105 @@ public sealed class MonsterDeathPresentation : MonoBehaviour
 
     private void PrepareFadeMaterials()
     {
-        if (_fadePrepared)
+        if (!_fadePrepared)
         {
-            return;
-        }
-
-        _fadePrepared = true;
-        _renderers = GetComponentsInChildren<Renderer>(true);
-        foreach (Renderer renderer in _renderers)
-        {
-            if (renderer == null)
+            _fadePrepared = true;
+            _renderers = GetComponentsInChildren<Renderer>(true);
+            foreach (Renderer renderer in _renderers)
             {
-                continue;
-            }
-
-            // Renderer.materials creates per-renderer instances, so fading a corpse never
-            // makes another monster using the same source material transparent.
-            Material[] materials = renderer.materials;
-            foreach (Material material in materials)
-            {
-                if (material == null)
+                if (renderer == null)
                 {
                     continue;
                 }
 
-                ConfigureTransparentMaterial(material);
-                Color original = material.HasProperty("_BaseColor")
-                    ? material.GetColor("_BaseColor")
-                    : material.color;
-                _fadeMaterials.Add(new FadeMaterial
+                // Renderer.materials creates per-renderer instances, so fading one entity
+                // never makes another entity using the same source material transparent.
+                Material[] materials = renderer.materials;
+                foreach (Material material in materials)
                 {
-                    Material = material,
-                    OriginalColor = original
-                });
+                    if (material == null)
+                    {
+                        continue;
+                    }
+
+                    Color original = material.HasProperty("_BaseColor")
+                        ? material.GetColor("_BaseColor")
+                        : material.color;
+                    _fadeMaterials.Add(new FadeMaterial
+                    {
+                        Material = material,
+                        OriginalColor = original
+                    });
+                }
             }
         }
+
+        ConfigureFadeMaterialsTransparent();
+    }
+
+    private void ConfigureFadeMaterialsTransparent()
+    {
+        foreach (FadeMaterial state in _fadeMaterials)
+        {
+            if (state.Material != null)
+            {
+                ConfigureTransparentMaterial(state.Material);
+            }
+        }
+    }
+
+    private void ConfigureOpaqueMaterials()
+    {
+        foreach (FadeMaterial state in _fadeMaterials)
+        {
+            if (state.Material != null)
+            {
+                ConfigureOpaqueMaterial(state.Material);
+                Color opaque = state.OriginalColor;
+                opaque.a = 1f;
+                if (state.Material.HasProperty("_BaseColor"))
+                {
+                    state.Material.SetColor("_BaseColor", opaque);
+                }
+                if (state.Material.HasProperty("_Color"))
+                {
+                    state.Material.SetColor("_Color", opaque);
+                }
+                state.Material.color = opaque;
+            }
+        }
+    }
+
+    private static void ConfigureOpaqueMaterial(Material material)
+    {
+        if (material.HasProperty("_Surface"))
+        {
+            material.SetFloat("_Surface", 0f);
+            material.SetFloat("_Blend", 0f);
+            material.SetFloat("_AlphaClip", 0f);
+            material.SetFloat("_SrcBlend", (float)BlendMode.One);
+            material.SetFloat("_DstBlend", (float)BlendMode.Zero);
+            material.SetFloat("_ZWrite", 1f);
+            material.SetOverrideTag("RenderType", "Opaque");
+            material.DisableKeyword("_SURFACE_TYPE_TRANSPARENT");
+            material.DisableKeyword("_ALPHABLEND_ON");
+            material.DisableKeyword("_ALPHATEST_ON");
+            material.EnableKeyword("_SURFACE_TYPE_OPAQUE");
+        }
+
+        if (material.HasProperty("_Mode"))
+        {
+            material.SetFloat("_Mode", 0f);
+            material.SetInt("_SrcBlend", (int)BlendMode.One);
+            material.SetInt("_DstBlend", (int)BlendMode.Zero);
+            material.SetInt("_ZWrite", 1);
+            material.SetOverrideTag("RenderType", "Opaque");
+            material.DisableKeyword("_ALPHATEST_ON");
+            material.DisableKeyword("_ALPHABLEND_ON");
+            material.DisableKeyword("_ALPHAPREMULTIPLY_ON");
+        }
+
+        material.renderQueue = (int)RenderQueue.Geometry;
     }
 
     private static void ConfigureTransparentMaterial(Material material)
