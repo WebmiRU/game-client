@@ -46,6 +46,11 @@ public sealed class GameServerLoginUI : MonoBehaviour
         public float x;
         public float y;
         public float z;
+        public float rotationX;
+        public float rotationY;
+        public float rotationZ;
+        public float rotationW;
+        public bool positionIsRoot;
     }
 
     private sealed class QueuedServerMessage
@@ -88,6 +93,8 @@ public sealed class GameServerLoginUI : MonoBehaviour
     private bool _hasPendingSpawn;
     private bool _hasAppliedSpawn;
     private Vector3 _pendingSpawnSurfacePosition;
+    private Quaternion _pendingSpawnRotation = Quaternion.identity;
+    private bool _pendingSpawnPositionIsRoot;
 
     private readonly object _outgoingLock = new object();
     private string _latestOutgoingPlayerState;
@@ -490,9 +497,24 @@ public sealed class GameServerLoginUI : MonoBehaviour
                 }
 
                 _pendingSpawnSurfacePosition = new Vector3(message.x, message.y, message.z);
+                _pendingSpawnRotation = new Quaternion(
+                    message.rotationX, message.rotationY, message.rotationZ, message.rotationW);
+                if (_pendingSpawnRotation.x == 0f && _pendingSpawnRotation.y == 0f &&
+                    _pendingSpawnRotation.z == 0f && _pendingSpawnRotation.w == 0f)
+                {
+                    _pendingSpawnRotation = Quaternion.identity;
+                }
+                else
+                {
+                    _pendingSpawnRotation = Quaternion.Normalize(_pendingSpawnRotation);
+                }
+                _pendingSpawnPositionIsRoot = message.positionIsRoot;
                 _hasPendingSpawn = true;
                 _status = "Авторизован; координаты получены";
-                Debug.Log("GameServer: spawn received at " + _pendingSpawnSurfacePosition);
+                Debug.Log(
+                    "GameServer: spawn received at " + _pendingSpawnSurfacePosition +
+                    ", restoredSavedPosition=" + _pendingSpawnPositionIsRoot +
+                    ", rotation=" + _pendingSpawnRotation);
                 break;
 
             case "player_state_result":
@@ -553,7 +575,10 @@ public sealed class GameServerLoginUI : MonoBehaviour
             return;
         }
 
-        player.SetSpawnSurfacePosition(_pendingSpawnSurfacePosition);
+        player.SetSpawnPosition(
+            _pendingSpawnSurfacePosition,
+            _pendingSpawnRotation,
+            _pendingSpawnPositionIsRoot);
         _hasPendingSpawn = false;
         _hasAppliedSpawn = true;
         _status = "Авторизован; персонаж появился";
