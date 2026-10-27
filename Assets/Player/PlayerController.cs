@@ -24,6 +24,12 @@ public class PlayerController : MonoBehaviour
     [SerializeField, Min(0.001f)] private float visualGroundSmoothingTime = 0.075f;
     private Transform _playerVisualTransform;
     private PlayerCombatVisuals _combatVisuals;
+    [SerializeField, Min(0f)] private float meleeRangeGap = 0.15f;
+    [SerializeField, Min(0.05f)] private float meleeAttackAnimationMaxDuration = 0.38f;
+    private WorldTargetable _meleeTarget;
+    private Vector3 _meleeApproachDirection;
+    private bool _isInMeleeRange;
+    private float _lastMeleeAttackTime = float.NegativeInfinity;
     private float _smoothedVisualWorldY;
     private float _visualWorldYVelocity;
     private bool _hasSmoothedVisualHeight;
@@ -100,31 +106,195 @@ public class PlayerController : MonoBehaviour
         _combatVisuals.Initialize(visualAnchor);
     }
 
-    private void TryPlayAttackPreviewFromMouse()
-    {
-        WorldTargetable target = GetWorldTargetUnderMouse();
-        if (target == null ||
-            !System.String.Equals(
-                target.TargetType,
-                "monster",
-                System.StringComparison.OrdinalIgnoreCase))
-        {
-            return;
-        }
-
-        if (_combatVisuals != null)
-        {
-            _combatVisuals.PlayAttack();
-        }
-    }
-
-    /// <summary>Starts the local sword swing; future combat logic can call this after an accepted attack.</summary>
+    /// <summary>Starts a local sword swing using the requested animation duration.</summary>
     public void PlayAttackAnimation()
     {
         if (_combatVisuals != null)
         {
             _combatVisuals.PlayAttack();
         }
+    }
+
+    public void PlayAttackAnimation(float animationDuration)
+    {
+        if (_combatVisuals != null)
+        {
+            _combatVisuals.PlayAttack(animationDuration);
+        }
+    }
+
+    private void BeginMeleeAttack(WorldTargetable target)
+    {
+        if (target == null)
+        {
+            return;
+        }
+
+        if (_meleeTarget == target)
+        {
+            // Re-clicking the active target does not reset its cadence.
+            return;
+        }
+
+        CancelMeleeAttack();
+        _meleeTarget = target;
+
+        Vector3 fromTargetToPlayer = transform.position - target.transform.position;
+        fromTargetToPlayer.y = 0f;
+        _meleeApproachDirection = fromTargetToPlayer.sqrMagnitude > 0.0001f
+            ? fromTargetToPlayer.normalized
+            : -transform.forward;
+        _lastMeleeAttackTime = float.NegativeInfinity;
+        _isInMeleeRange = false;
+        Debug.Log("Melee combat started: target=" + target.DisplayName + " (" + target.TargetID + ").");
+    }
+
+    private void CancelMeleeAttack()
+    {
+        if (_meleeTarget != null)
+        {
+            Debug.Log("Melee combat stopped: target=" + _meleeTarget.DisplayName + ".");
+        }
+
+        _meleeTarget = null;
+        _isInMeleeRange = false;
+        _lastMeleeAttackTime = float.NegativeInfinity;
+        _hasMoveTarget = false;
+
+        if (_moveTargetInstance != null)
+        {
+            _moveTargetInstance.SetActive(false);
+        }
+
+        if (_combatVisuals != null)
+        {
+            _combatVisuals.StopAttack();
+        }
+    }
+
+    private void UpdateMeleeCombatState()
+    {
+        if (_meleeTarget == null)
+        {
+            return;
+        }
+
+        if (!_meleeTarget.gameObject.activeInHierarchy ||
+            !System.String.Equals(
+                _meleeTarget.TargetType,
+                "monster",
+                System.StringComparison.OrdinalIgnoreCase))
+        {
+            CancelMeleeAttack();
+            return;
+        }
+
+        Vector3 targetPosition = _meleeTarget.transform.position;
+        Vector3 toTarget = targetPosition - transform.position;
+        toTarget.y = 0f;
+        float distanceToTarget = toTarget.magnitude;
+
+        if (_meleeApproachDirection.sqrMagnitude < 0.0001f)
+        {
+            _meleeApproachDirection = distanceToTarget > 0.0001f
+                ? -toTarget.normalized
+                : -transform.forward;
+        }
+
+        float meleeRange = GetMeleeRange(_meleeTarget, _meleeApproachDirection);
+        // Use the movement arrival tolerance to enter range, and a small hysteresis
+        // margin to avoid bouncing between walking and attacking on contact.
+        float enterRange = meleeRange + clickStopDistance;
+        float leaveRange = enterRange + 0.25f;
+        bool inRange = _isInMeleeRange
+            ? distanceToTarget <= leaveRange
+            : distanceToTarget <= enterRange;
+
+        if (inRange)
+        {
+            bool justEnteredRange = !_isInMeleeRange;
+            _isInMeleeRange = true;
+            _hasMoveTarget = false;
+            if (_moveTargetInstance != null)
+            {
+                _moveTargetInstance.SetActive(false);
+            }
+
+            if (justEnteredRange)
+            {
+                _lastMeleeAttackTime = float.NegativeInfinity;
+            }
+
+            float attacksPerSecond = GetCurrentServerAttackSpeed();
+            float attackInterval = 1f / attacksPerSecond;
+            float now = Time.time;
+            if (now >= _lastMeleeAttackTime + attackInterval)
+            {
+                float animationDuration = Mathf.Min(
+                    meleeAttackAnimationMaxDuration,
+                    attackInterval * 0.9f);
+                PlayAttackAnimation(animationDuration);
+                _lastMeleeAttackTime = now;
+            }
+            return;
+        }
+
+        _isInMeleeRange = false;
+        _hasMoveTarget = true;
+        _targetPosition = targetPosition + _meleeApproachDirection * meleeRange;
+        _targetPosition.y = transform.position.y;
+
+        if (_moveTargetInstance != null)
+        {
+            _moveTargetInstance.transform.SetPositionAndRotation(_targetPosition, Quaternion.identity);
+            _moveTargetInstance.SetActive(true);
+        }
+    }
+
+    private float GetMeleeRange(WorldTargetable target, Vector3 targetToPlayerDirection)
+    {
+        float rootScaleX = Mathf.Max(0.0001f, Mathf.Abs(transform.lossyScale.x));
+        float rootScaleZ = Mathf.Max(0.0001f, Mathf.Abs(transform.lossyScale.z));
+        float playerRadius = characterController != null
+            ? characterController.radius * Mathf.Max(rootScaleX, rootScaleZ)
+            : 0.5f;
+
+        float targetRadius = GetTargetHorizontalRadius(target, targetToPlayerDirection);
+        return playerRadius + targetRadius + meleeRangeGap;
+    }
+
+    private static float GetTargetHorizontalRadius(WorldTargetable target, Vector3 direction)
+    {
+        Collider targetCollider = target != null ? target.GetComponent<Collider>() : null;
+        if (targetCollider == null)
+        {
+            return 0.5f;
+        }
+
+        Bounds bounds = targetCollider.bounds;
+        if (targetCollider is BoxCollider)
+        {
+            // Support radius of the box along the current approach direction.
+            return Mathf.Abs(direction.x) * bounds.extents.x +
+                Mathf.Abs(direction.z) * bounds.extents.z;
+        }
+
+        // Sphere/capsule targets use a radial footprint; the larger horizontal extent
+        // is safe for both the default spherical enemies and a future taller capsule.
+        return Mathf.Max(bounds.extents.x, bounds.extents.z);
+    }
+
+    private float GetCurrentServerAttackSpeed()
+    {
+        if (_gameServerLogin == null)
+        {
+            _gameServerLogin = GameServerLoginUI.Instance;
+        }
+
+        float attackSpeed = _gameServerLogin != null && _gameServerLogin.HasServerAttackSpeed
+            ? _gameServerLogin.ServerAttackSpeed
+            : 1f;
+        return Mathf.Clamp(attackSpeed, 0.1f, 10f);
     }
 
     private void ConfigureCharacterCollider()
@@ -372,6 +542,7 @@ public class PlayerController : MonoBehaviour
             characterController = GetComponent<CharacterController>();
         }
 
+        CancelMeleeAttack();
         _hasMoveTarget = false;
         _verticalVelocity = 0f;
         _hasSmoothedVisualHeight = false;
@@ -621,18 +792,13 @@ public class PlayerController : MonoBehaviour
 
         UpdateHoveredWorldTarget();
 
-        // Right-clicking a monster plays a client-side sword-swing preview only.
-        // Damage and server-authoritative combat will be implemented separately.
-        if (Mouse.current != null && Mouse.current.rightButton.wasPressedThisFrame)
-        {
-            TryPlayAttackPreviewFromMouse();
-        }
-
-        // Clicking an entity selects it; clicking the Terrain still issues a move order.
+        // Clicking an entity selects it; clicking the selected monster again starts melee combat.
         if (Mouse.current != null && Mouse.current.leftButton.wasPressedThisFrame)
         {
             TrySetMoveTargetFromMouse();
         }
+
+        UpdateMeleeCombatState();
 
         // Movement is exclusively click-to-move; no keyboard movement is processed.
         Vector3 horizontalMovement = Vector3.zero;
@@ -672,9 +838,20 @@ public class PlayerController : MonoBehaviour
                 -20f);
         }
 
-        if (horizontalMovement.sqrMagnitude > 0.001f)
+        Vector3 facingDirection = horizontalMovement;
+        if (_meleeTarget != null && _isInMeleeRange)
         {
-            Quaternion targetRotation = Quaternion.LookRotation(horizontalMovement, Vector3.up);
+            Vector3 toCombatTarget = _meleeTarget.transform.position - transform.position;
+            toCombatTarget.y = 0f;
+            if (toCombatTarget.sqrMagnitude > 0.001f)
+            {
+                facingDirection = toCombatTarget.normalized;
+            }
+        }
+
+        if (facingDirection.sqrMagnitude > 0.001f)
+        {
+            Quaternion targetRotation = Quaternion.LookRotation(facingDirection, Vector3.up);
             transform.rotation = Quaternion.RotateTowards(
                 transform.rotation,
                 targetRotation,
@@ -847,20 +1024,41 @@ public class PlayerController : MonoBehaviour
             {
                 _gameServerLogin = GameServerLoginUI.Instance;
             }
-            if (_gameServerLogin != null)
+
+            bool alreadySelected = _gameServerLogin != null &&
+                _gameServerLogin.IsTargetSelected(clickedTarget);
+            bool isMonster = System.String.Equals(
+                clickedTarget.TargetType,
+                "monster",
+                System.StringComparison.OrdinalIgnoreCase);
+
+            if (alreadySelected && isMonster)
             {
-                _gameServerLogin.SelectTarget(clickedTarget);
+                // First click selects the monster; clicking that same selection again
+                // starts melee pursuit and repeated attacks.
+                BeginMeleeAttack(clickedTarget);
+            }
+            else
+            {
+                CancelMeleeAttack();
+                if (_gameServerLogin != null)
+                {
+                    _gameServerLogin.SelectTarget(clickedTarget);
+                }
+                _hasMoveTarget = false;
+                if (_moveTargetInstance != null)
+                {
+                    _moveTargetInstance.SetActive(false);
+                }
             }
 
-            _hasMoveTarget = false;
-            if (_moveTargetInstance != null)
-            {
-                _moveTargetInstance.SetActive(false);
-            }
             _hasSentNetworkState = false;
             _nextNetworkSyncTime = 0f;
             return;
         }
+
+        // Clicking the terrain exits combat mode and issues a normal move order.
+        CancelMeleeAttack();
 
         // Resolve again in case the camera became active after this component's Awake.
         if (playerCamera == null)
