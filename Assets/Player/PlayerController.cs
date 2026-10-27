@@ -621,10 +621,20 @@ public class PlayerController : MonoBehaviour
 
         if (stopMovement)
         {
-            _hasMoveTarget = false;
-            if (_moveTargetInstance != null)
+            // If the server cannot make progress toward the melee approach point,
+            // stop combat too; otherwise the combat update would issue the same
+            // impossible move order again on the very next frame.
+            if (_isMeleeCombatActive)
             {
-                _moveTargetInstance.SetActive(false);
+                CancelMeleeAttack();
+            }
+            else
+            {
+                _hasMoveTarget = false;
+                if (_moveTargetInstance != null)
+                {
+                    _moveTargetInstance.SetActive(false);
+                }
             }
         }
 
