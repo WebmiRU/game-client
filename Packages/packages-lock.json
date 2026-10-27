@@ -76,6 +76,14 @@
       "source": "builtin",
       "dependencies": {}
     },
+    "com.unity.multiplayer.center": {
+      "version": "2.1.0",
+      "depth": 0,
+      "source": "builtin",
+      "dependencies": {
+        "com.unity.modules.uielements": "1.0.0"
+      }
+    },
     "com.unity.nuget.mono-cecil": {
       "version": "1.11.6",
       "depth": 3,
