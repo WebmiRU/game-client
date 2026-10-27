@@ -15,6 +15,7 @@ public class PlayerController : MonoBehaviour
     [SerializeField] private GameObject moveTargetPrefab;
 
     private Camera playerCamera;
+    private Terrain _terrain;
     private float _verticalVelocity;
     private Vector3 _targetPosition;
     private bool _hasMoveTarget;
@@ -52,7 +53,56 @@ public class PlayerController : MonoBehaviour
             );
         }
         
+        EnsureTerrainCollider();
         CreateForwardMarker();
+    }
+
+    private void EnsureTerrainCollider()
+    {
+        _terrain = Terrain.activeTerrain;
+        if (_terrain == null)
+        {
+            Terrain[] terrains = FindObjectsByType<Terrain>(FindObjectsSortMode.None);
+            if (terrains.Length > 0)
+            {
+                _terrain = terrains[0];
+            }
+        }
+
+        if (_terrain == null)
+        {
+            Debug.LogError("PlayerController: no Terrain found in the loaded scene.");
+            return;
+        }
+
+        if (_terrain.terrainData == null)
+        {
+            Debug.LogError("PlayerController: Terrain '" + _terrain.name + "' has no TerrainData assigned.");
+            return;
+        }
+
+        // Keep rendering and physics enabled in Play Mode. This also repairs a
+        // missing or stale TerrainCollider reference without editing the scene asset.
+        _terrain.enabled = true;
+        TerrainCollider terrainCollider = _terrain.GetComponent<TerrainCollider>();
+        if (terrainCollider == null)
+        {
+            terrainCollider = _terrain.gameObject.AddComponent<TerrainCollider>();
+        }
+
+        if (terrainCollider.terrainData != _terrain.terrainData)
+        {
+            terrainCollider.terrainData = _terrain.terrainData;
+        }
+
+        terrainCollider.enabled = true;
+        Physics.SyncTransforms();
+
+        Debug.Log(
+            "PlayerController: Terrain ready; name=" + _terrain.name +
+            ", data=" + _terrain.terrainData.name +
+            ", collider=" + terrainCollider.enabled +
+            ", size=" + _terrain.terrainData.size);
     }
 
     private void CreateForwardMarker()
@@ -172,12 +222,13 @@ public class PlayerController : MonoBehaviour
         // This avoids accidentally treating the character or another object as terrain.
         RaycastHit[] hits = Physics.RaycastAll(
             ray,
-            1000f,
+            5000f,
             Physics.DefaultRaycastLayers,
             QueryTriggerInteraction.Ignore);
 
         bool foundTerrain = false;
         RaycastHit terrainHit = default;
+        Vector3 targetPoint = Vector3.zero;
 
         foreach (RaycastHit hit in hits)
         {
@@ -189,22 +240,36 @@ public class PlayerController : MonoBehaviour
             }
         }
 
-        if (!foundTerrain)
+        if (foundTerrain)
         {
-            if (hits.Length > 0)
-            {
-                Debug.LogWarning(
-                    $"Click-to-move: ray hit '{hits[0].collider.name}', but no TerrainCollider was found along the ray.");
-            }
-            else
-            {
-                Debug.LogWarning("Click-to-move: ray did not hit any Collider. Check that the Terrain has an enabled TerrainCollider.");
-            }
+            targetPoint = terrainHit.point;
+        }
+        else if (_terrain != null && TryFindTerrainSurface(ray, out Vector3 sampledPoint))
+        {
+            // Fallback to height sampling if the TerrainCollider does not return
+            // a hit, so click-to-move still works while the physics scene is repaired.
+            targetPoint = sampledPoint;
+            Debug.LogWarning("Click-to-move: TerrainCollider raycast missed; used Terrain.SampleHeight fallback.");
+        }
+        else
+        {
+            string terrainState = _terrain == null
+                ? "Terrain not found"
+                : "Terrain enabled=" + _terrain.enabled +
+                  ", data assigned=" + (_terrain.terrainData != null) +
+                  ", collider enabled=" + (_terrain.GetComponent<TerrainCollider>() != null &&
+                    _terrain.GetComponent<TerrainCollider>().enabled);
 
+            Debug.LogWarning(
+                "Click-to-move: ray did not intersect the terrain. " +
+                "camera=" + playerCamera.name +
+                ", rayOrigin=" + ray.origin +
+                ", rayDirection=" + ray.direction +
+                ", " + terrainState);
             return;
         }
 
-        _targetPosition = terrainHit.point;
+        _targetPosition = targetPoint;
         _hasMoveTarget = true;
 
         if (_moveTargetInstance != null)
@@ -217,9 +282,78 @@ public class PlayerController : MonoBehaviour
             _moveTargetInstance.SetActive(true);
         }
 
-        Debug.Log(
-            $"Click-to-move target: {_targetPosition} " +
-            $"(Terrain: {terrainHit.collider.name})"
-        );
+        string hitSource = foundTerrain ? terrainHit.collider.name : "Terrain.SampleHeight";
+        Debug.Log("Click-to-move target: " + _targetPosition + " (source: " + hitSource + ")");
+    }
+
+    private bool TryFindTerrainSurface(Ray ray, out Vector3 intersection)
+    {
+        intersection = Vector3.zero;
+        if (_terrain == null || _terrain.terrainData == null)
+        {
+            return false;
+        }
+
+        TerrainData data = _terrain.terrainData;
+        Vector3 terrainOrigin = _terrain.transform.position;
+        Vector3 scale = _terrain.transform.lossyScale;
+        float minX = terrainOrigin.x;
+        float maxX = terrainOrigin.x + data.size.x * Mathf.Abs(scale.x);
+        float minZ = terrainOrigin.z;
+        float maxZ = terrainOrigin.z + data.size.z * Mathf.Abs(scale.z);
+
+        const float sampleStep = 2f;
+        const float maxDistance = 5000f;
+        bool previousPointWasAboveSurface = false;
+        float previousDistance = 0f;
+
+        for (float distance = 0f; distance <= maxDistance; distance += sampleStep)
+        {
+            Vector3 point = ray.GetPoint(distance);
+            bool withinTerrain =
+                point.x >= minX && point.x <= maxX &&
+                point.z >= minZ && point.z <= maxZ;
+
+            if (!withinTerrain)
+            {
+                previousPointWasAboveSurface = false;
+                continue;
+            }
+
+            float surfaceY = _terrain.SampleHeight(point) + terrainOrigin.y;
+            bool pointIsAboveSurface = point.y >= surfaceY;
+
+            if (previousPointWasAboveSurface && !pointIsAboveSurface)
+            {
+                // Refine the first above-to-below crossing to sub-centimeter precision.
+                float low = previousDistance;
+                float high = distance;
+
+                for (int iteration = 0; iteration < 16; iteration++)
+                {
+                    float middle = (low + high) * 0.5f;
+                    Vector3 middlePoint = ray.GetPoint(middle);
+                    float middleSurfaceY = _terrain.SampleHeight(middlePoint) + terrainOrigin.y;
+                    if (middlePoint.y >= middleSurfaceY)
+                    {
+                        low = middle;
+                    }
+                    else
+                    {
+                        high = middle;
+                    }
+                }
+
+                Vector3 hitPoint = ray.GetPoint((low + high) * 0.5f);
+                hitPoint.y = _terrain.SampleHeight(hitPoint) + terrainOrigin.y;
+                intersection = hitPoint;
+                return true;
+            }
+
+            previousPointWasAboveSurface = pointIsAboveSurface;
+            previousDistance = distance;
+        }
+
+        return false;
     }
 }
