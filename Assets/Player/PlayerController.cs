@@ -115,5 +115,32 @@ public class PlayerController : MonoBehaviour
         movement.y = _verticalVelocity;
 
         characterController.Move(movement * Time.deltaTime);
+        
+        if (Mouse.current != null &&
+            Mouse.current.leftButton.wasPressedThisFrame)
+        {
+            if (playerCamera == null)
+            {
+                Debug.LogError("PlayerCamera не найдена!");
+                return;
+            }
+
+            Vector2 mousePosition =
+                Mouse.current.position.ReadValue();
+
+            Ray ray = playerCamera.ScreenPointToRay(mousePosition);
+
+            if (Physics.Raycast(ray, out RaycastHit hit, 1000f))
+            {
+                Debug.Log(
+                    $"Попадание: {hit.collider.name}, " +
+                    $"координаты: {hit.point}"
+                );
+            }
+            else
+            {
+                Debug.Log("Луч не попал ни в один Collider");
+            }
+        }
     }
 }
