@@ -168,7 +168,7 @@ public class PlayerController : MonoBehaviour
         visual.transform.localPosition = characterController.center;
         visual.transform.localRotation = Quaternion.identity;
         visual.transform.localScale = visualScale;
-        _playerVisualTransform = visual;
+        _playerVisualTransform = visual.transform;
 
         MeshFilter visualFilter = visual.AddComponent<MeshFilter>();
         visualFilter.sharedMesh = sourceFilter.sharedMesh;
