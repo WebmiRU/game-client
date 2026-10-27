@@ -44,7 +44,7 @@ public static class StaticClockworkGolemPreview
         Terrain terrain = Terrain.activeTerrain;
         if (terrain == null)
         {
-            Terrain[] terrains = Object.FindObjectsByType<Terrain>(FindObjectsSortMode.None);
+            Terrain[] terrains = UnityEngine.Object.FindObjectsByType<Terrain>(FindObjectsSortMode.None);
             if (terrains.Length > 0)
             {
                 terrain = terrains[0];
@@ -67,7 +67,7 @@ public static class StaticClockworkGolemPreview
             }
         }
 
-        GameObject instance = Object.Instantiate(
+        GameObject instance = UnityEngine.Object.Instantiate(
             model,
             position,
             Quaternion.Euler(0f, PreviewYaw, 0f));
@@ -149,7 +149,7 @@ public static class StaticClockworkGolemPreview
             return;
         }
 
-        Mesh mappedMesh = Object.Instantiate(source);
+        Mesh mappedMesh = UnityEngine.Object.Instantiate(source);
         mappedMesh.name = source.name + "_GolemPreviewUV";
 
         Vector3 min = vertices[0];
