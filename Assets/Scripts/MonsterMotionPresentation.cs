@@ -41,6 +41,13 @@ public sealed class MonsterMotionPresentation : MonoBehaviour
         _hasState = true;
     }
 
+    public void Stop()
+    {
+        _falling = false;
+        _paused = true;
+        _velocity = 0f;
+    }
+
     private void Update()
     {
         if (!_hasState || !_falling || _paused || Time.deltaTime <= 0f)
