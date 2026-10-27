@@ -41,6 +41,7 @@ public class PlayerController : MonoBehaviour
             characterController = GetComponent<CharacterController>();
         }
         ConfigureCharacterCollider();
+        AlignPrimitiveCapsuleVisualWithFeetOrigin();
 
         // CinemachineCamera is virtual. Camera.main is the real camera that renders the view.
         playerCamera = Camera.main;
@@ -95,11 +96,73 @@ public class PlayerController : MonoBehaviour
         characterController.minMoveDistance = 0f;
         characterController.stepOffset = Mathf.Min(0.3f / scaleY, characterController.height * 0.4f);
 
+        // The scene's original primitive CapsuleCollider is centred on the root,
+        // while CharacterController is feet-anchored. Keeping both active leaves
+        // a second collider intersecting the Terrain and can interfere with movement.
+        CapsuleCollider legacyCollider = GetComponent<CapsuleCollider>();
+        if (legacyCollider != null)
+        {
+            legacyCollider.enabled = false;
+        }
+
         Debug.Log(
             "PlayerController: collider configured; worldHeight=2, worldDiameter=0.5, " +
             "localHeight=" + characterController.height +
             ", localRadius=" + characterController.radius +
             ", localCenter=" + characterController.center);
+    }
+
+    private void AlignPrimitiveCapsuleVisualWithFeetOrigin()
+    {
+        if (characterController == null)
+        {
+            return;
+        }
+
+        MeshFilter sourceFilter = GetComponent<MeshFilter>();
+        MeshRenderer sourceRenderer = GetComponent<MeshRenderer>();
+        if (sourceFilter == null || sourceFilter.sharedMesh == null || sourceRenderer == null ||
+            !string.Equals(sourceFilter.sharedMesh.name, "Capsule", System.StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        // PlayerController.transform.position is the feet/base point used by the
+        // server and CharacterController. Unity's built-in Capsule mesh is centred
+        // at its own pivot, so render it one collider-centre above that root.
+        // Otherwise the mesh sits mostly underground while ForwardMarker remains
+        // at CharacterController.center and looks like a nose on the forehead.
+        Transform existingVisual = transform.Find("PlayerVisual");
+        if (existingVisual != null)
+        {
+            sourceRenderer.enabled = false;
+            return;
+        }
+
+        GameObject visual = new GameObject("PlayerVisual");
+        visual.layer = gameObject.layer;
+        visual.transform.SetParent(transform, false);
+        visual.transform.localPosition = characterController.center;
+        visual.transform.localRotation = Quaternion.identity;
+        visual.transform.localScale = Vector3.one;
+
+        MeshFilter visualFilter = visual.AddComponent<MeshFilter>();
+        visualFilter.sharedMesh = sourceFilter.sharedMesh;
+
+        MeshRenderer visualRenderer = visual.AddComponent<MeshRenderer>();
+        visualRenderer.sharedMaterials = sourceRenderer.sharedMaterials;
+        visualRenderer.shadowCastingMode = sourceRenderer.shadowCastingMode;
+        visualRenderer.receiveShadows = sourceRenderer.receiveShadows;
+        visualRenderer.lightProbeUsage = sourceRenderer.lightProbeUsage;
+        visualRenderer.reflectionProbeUsage = sourceRenderer.reflectionProbeUsage;
+        visualRenderer.motionVectorGenerationMode = sourceRenderer.motionVectorGenerationMode;
+        visualRenderer.renderingLayerMask = sourceRenderer.renderingLayerMask;
+        visualRenderer.sortingLayerID = sourceRenderer.sortingLayerID;
+        visualRenderer.sortingOrder = sourceRenderer.sortingOrder;
+        visualRenderer.enabled = sourceRenderer.enabled;
+
+        sourceRenderer.enabled = false;
+        Debug.Log("PlayerController: moved primitive Capsule visual to the CharacterController centre.");
     }
 
     private void EnsureTerrainCollider()
