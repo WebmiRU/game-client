@@ -21,6 +21,11 @@ public class PlayerController : MonoBehaviour
     private bool _hasMoveTarget;
     private GameObject _moveTargetInstance;
     private WorldTargetable _hoveredWorldTarget;
+    [SerializeField, Min(0.001f)] private float visualGroundSmoothingTime = 0.075f;
+    private Transform _playerVisualTransform;
+    private float _smoothedVisualWorldY;
+    private float _visualWorldYVelocity;
+    private bool _hasSmoothedVisualHeight;
 
     private GameServerLoginUI _gameServerLogin;
     private ThirdPersonCameraController _cameraController;
@@ -95,7 +100,11 @@ public class PlayerController : MonoBehaviour
         characterController.height = 2f / scaleY;
         characterController.radius = 0.5f / Mathf.Max(scaleX, scaleZ);
         characterController.center = new Vector3(0f, 1f / scaleY, 0f);
-        characterController.skinWidth = Mathf.Min(0.025f, characterController.radius * 0.1f);
+        // A very narrow skin forces the controller to react to tiny contact changes
+        // on every frame. The recommended 10% radius helps keep contact stable.
+        characterController.skinWidth = Mathf.Min(
+            0.05f / Mathf.Max(scaleX, scaleZ),
+            characterController.radius * 0.1f);
         characterController.minMoveDistance = 0f;
         characterController.stepOffset = Mathf.Min(0.3f / scaleY, characterController.height * 0.4f);
 
@@ -130,9 +139,8 @@ public class PlayerController : MonoBehaviour
             return;
         }
 
-        // The built-in Capsule mesh is 1m wide and 2m high at unit scale. The
-        // authoritative CharacterController is 0.5m wide and 2m high. Match the
-        // rendered shell to that collider, including a non-unit/non-uniform root scale.
+        // The built-in Capsule mesh and CharacterController both have a 1m diameter
+        // and 2m height in world space, including a non-unit/non-uniform root scale.
         Vector3 rootScale = transform.lossyScale;
         float scaleX = Mathf.Max(0.0001f, Mathf.Abs(rootScale.x));
         float scaleY = Mathf.Max(0.0001f, Mathf.Abs(rootScale.y));
@@ -149,6 +157,7 @@ public class PlayerController : MonoBehaviour
         {
             existingVisual.localPosition = characterController.center;
             existingVisual.localScale = visualScale;
+            _playerVisualTransform = existingVisual;
             sourceRenderer.enabled = false;
             return;
         }
@@ -159,6 +168,7 @@ public class PlayerController : MonoBehaviour
         visual.transform.localPosition = characterController.center;
         visual.transform.localRotation = Quaternion.identity;
         visual.transform.localScale = visualScale;
+        _playerVisualTransform = visual;
 
         MeshFilter visualFilter = visual.AddComponent<MeshFilter>();
         visualFilter.sharedMesh = sourceFilter.sharedMesh;
@@ -320,6 +330,7 @@ public class PlayerController : MonoBehaviour
 
         _hasMoveTarget = false;
         _verticalVelocity = 0f;
+        _hasSmoothedVisualHeight = false;
         _targetPosition = serverPosition;
         _hasSentNetworkState = false;
         _nextNetworkSyncTime = 0f;
@@ -385,20 +396,6 @@ public class PlayerController : MonoBehaviour
             characterController = GetComponent<CharacterController>();
         }
 
-        bool wasEnabled = characterController != null && characterController.enabled;
-        if (wasEnabled)
-        {
-            characterController.enabled = false;
-        }
-
-        transform.SetPositionAndRotation(acceptedPosition, acceptedRotation);
-
-        if (wasEnabled)
-        {
-            characterController.enabled = true;
-        }
-
-        _verticalVelocity = 0f;
         if (stopMovement)
         {
             _hasMoveTarget = false;
@@ -408,13 +405,69 @@ public class PlayerController : MonoBehaviour
             }
         }
 
+        if (characterController == null)
+        {
+            _hasSentNetworkState = false;
+            _nextNetworkSyncTime = 0f;
+            return;
+        }
+
+        Vector3 currentPosition = transform.position;
+        float horizontalDelta = Vector2.Distance(
+            new Vector2(currentPosition.x, currentPosition.z),
+            new Vector2(acceptedPosition.x, acceptedPosition.z));
+        float verticalDelta = Mathf.Abs(currentPosition.y - acceptedPosition.y);
+        float rotationDelta = Quaternion.Angle(transform.rotation, acceptedRotation);
+
+        // Unity physics and the server solver will differ by a few centimetres.
+        // Snapping those differences causes visible movement and shadow shimmer.
+        const float horizontalCorrectionThreshold = 0.06f;
+        const float verticalCorrectionThreshold = 0.08f;
+        const float rotationCorrectionThreshold = 1f;
+        if (horizontalDelta < horizontalCorrectionThreshold &&
+            verticalDelta < verticalCorrectionThreshold &&
+            rotationDelta < rotationCorrectionThreshold)
+        {
+            _hasSentNetworkState = false;
+            _nextNetworkSyncTime = 0f;
+            return;
+        }
+
+        Vector3 correctedPosition = acceptedPosition;
+        if (horizontalDelta < horizontalCorrectionThreshold)
+        {
+            correctedPosition.x = currentPosition.x;
+            correctedPosition.z = currentPosition.z;
+        }
+        if (verticalDelta < verticalCorrectionThreshold)
+        {
+            correctedPosition.y = currentPosition.y;
+        }
+
+        bool wasEnabled = characterController.enabled;
+        if (wasEnabled)
+        {
+            characterController.enabled = false;
+        }
+
+        // Apply only meaningful server displacement; keep minor local ground offsets.
+        transform.SetPositionAndRotation(
+            correctedPosition,
+            rotationDelta >= rotationCorrectionThreshold ? acceptedRotation : transform.rotation);
+
+        if (wasEnabled)
+        {
+            characterController.enabled = true;
+        }
+
+        _verticalVelocity = 0f;
         Physics.SyncTransforms();
         _hasSentNetworkState = false;
         _nextNetworkSyncTime = 0f;
 
         Debug.Log(
-            "PlayerController: applied server collision correction; position=" +
-            acceptedPosition + ", rotation=" + acceptedRotation);
+            "PlayerController: applied meaningful server collision correction; position=" +
+            correctedPosition + ", deltaXZ=" + horizontalDelta + ", deltaY=" + verticalDelta);
     }
 
     /// <summary>
@@ -448,7 +501,7 @@ public class PlayerController : MonoBehaviour
 
         // Ground correction is intentionally one-way: never push a character down
         // through local terrain. Ordinary downward settling remains the controller's job.
-        if (position.y >= minimumRootY - 0.02f)
+        if (position.y >= minimumRootY - 0.08f)
         {
             return;
         }
@@ -553,12 +606,20 @@ public class PlayerController : MonoBehaviour
             }
         }
 
-        if (characterController.isGrounded && _verticalVelocity < 0f)
+        if (characterController.isGrounded)
         {
-            _verticalVelocity = -2f;
+            if (_verticalVelocity < 0f)
+            {
+                // Maintain gentle downward contact without adding gravity again each frame.
+                _verticalVelocity = -2f;
+            }
         }
-
-        _verticalVelocity += gravity * Time.deltaTime;
+        else
+        {
+            _verticalVelocity = Mathf.Max(
+                _verticalVelocity + gravity * Time.deltaTime,
+                -20f);
+        }
 
         if (horizontalMovement.sqrMagnitude > 0.001f)
         {
@@ -575,6 +636,38 @@ public class PlayerController : MonoBehaviour
 
         characterController.Move(movement * Time.deltaTime);
         SyncNetworkStateIfNeeded();
+    }
+
+    private void LateUpdate()
+    {
+        if (_playerVisualTransform == null || characterController == null)
+        {
+            return;
+        }
+
+        // Ease only the rendered shell. The CharacterController/server-facing root remains
+        // exact, while lighting and shadows follow a smoother visual height on slopes.
+        float targetWorldY = transform.TransformPoint(characterController.center).y;
+        if (!_hasSmoothedVisualHeight)
+        {
+            _smoothedVisualWorldY = targetWorldY;
+            _hasSmoothedVisualHeight = true;
+        }
+        else
+        {
+            _smoothedVisualWorldY = Mathf.SmoothDamp(
+                _smoothedVisualWorldY,
+                targetWorldY,
+                ref _visualWorldYVelocity,
+                visualGroundSmoothingTime,
+                Mathf.Infinity,
+                Time.unscaledDeltaTime);
+        }
+
+        Vector3 localPosition = _playerVisualTransform.localPosition;
+        float scaleY = Mathf.Max(0.0001f, Mathf.Abs(transform.lossyScale.y));
+        localPosition.y = (_smoothedVisualWorldY - transform.position.y) / scaleY;
+        _playerVisualTransform.localPosition = localPosition;
     }
 
     private void SyncNetworkStateIfNeeded()

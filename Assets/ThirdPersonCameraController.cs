@@ -9,6 +9,11 @@ public class ThirdPersonCameraController : MonoBehaviour
     [Header("Camera Settings")]
     [SerializeField] private float distance = 15f;
     [SerializeField] private float targetHeight = 1.5f;
+    [SerializeField, Min(0f)] private float followSmoothingTime = 0.075f;
+
+    private Vector3 _smoothedPivot;
+    private Vector3 _pivotVelocity;
+    private bool _hasSmoothedPivot;
     
     [Header("Zoom")]
     [SerializeField] private float zoomSpeed = 1f;
@@ -50,6 +55,8 @@ public class ThirdPersonCameraController : MonoBehaviour
 
         _yaw = target.eulerAngles.y;
         _pitch = Mathf.Clamp(startupPitch, minPitch, maxPitch);
+        _hasSmoothedPivot = false;
+        _pivotVelocity = Vector3.zero;
     }
 
     private void LateUpdate()
@@ -96,9 +103,30 @@ public class ThirdPersonCameraController : MonoBehaviour
             }
         }
 
-        // Точка, вокруг которой вращается камера.
-        Vector3 pivot = target.position
-                        + Vector3.up * targetHeight;
+        // Smooth small vertical corrections from terrain contact/server reconciliation.
+        // Orbit input stays immediate; only the follow pivot is eased.
+        Vector3 desiredPivot = target.position + Vector3.up * targetHeight;
+        if (!_hasSmoothedPivot)
+        {
+            _smoothedPivot = desiredPivot;
+            _hasSmoothedPivot = true;
+        }
+        else if (followSmoothingTime <= 0f)
+        {
+            _smoothedPivot = desiredPivot;
+            _pivotVelocity = Vector3.zero;
+        }
+        else
+        {
+            _smoothedPivot = Vector3.SmoothDamp(
+                _smoothedPivot,
+                desiredPivot,
+                ref _pivotVelocity,
+                followSmoothingTime,
+                Mathf.Infinity,
+                Time.unscaledDeltaTime);
+        }
+        Vector3 pivot = _smoothedPivot;
 
         // Рассчитываем положение камеры.
         Quaternion rotation = Quaternion.Euler(
