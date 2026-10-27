@@ -31,6 +31,8 @@ public sealed class MonsterDeathPresentation : MonoBehaviour
     private float _deathStartedAt;
     private Vector3 _standingPosition;
     private Quaternion _standingRotation;
+    private Vector3 _dogFrontBottomPivot;
+    private Vector3 _dogPivotOffset;
     private Renderer[] _renderers = System.Array.Empty<Renderer>();
 
     public bool IsDead => _isDead;
@@ -58,6 +60,12 @@ public sealed class MonsterDeathPresentation : MonoBehaviour
         _deathStartedAt = Time.time - elapsedAtReceipt;
         _standingPosition = transform.position;
         _standingRotation = transform.rotation;
+
+        // The test dog is a unit cube scaled to two world units. Its front-bottom edge
+        // is local (0, -0.5, +0.5). Keep that edge fixed during the fall so the box
+        // tips over it like a square wheel instead of spinning around its center.
+        _dogPivotOffset = Vector3.Scale(new Vector3(0f, -0.5f, 0.5f), transform.localScale);
+        _dogFrontBottomPivot = _standingPosition + _standingRotation * _dogPivotOffset;
 
         // Keep the monster's collision active while its corpse is visible. Disabling every
         // collider here allowed the player to walk halfway into the dog during the death roll.
@@ -121,13 +129,13 @@ public sealed class MonsterDeathPresentation : MonoBehaviour
         {
             float progress = Mathf.Clamp01(elapsed / Mathf.Max(0.2f, dogFallDuration));
             float easedProgress = Mathf.SmoothStep(0f, 1f, progress);
-            // The dog's +Z-facing muzzle rolls down toward the ground while the -Z tail
-            // swings upward. Rotation is spread over the full duration, never instant.
-            transform.rotation = _standingRotation *
+            // The dog's +Z muzzle rolls over its front-bottom edge while the -Z tail
+            // rises. Reposition the root around the fixed edge every frame, like a square
+            // wheel rolling over one corner; this prevents the previous center-axis spin.
+            Quaternion roll = _standingRotation *
                 Quaternion.AngleAxis(90f * easedProgress, Vector3.right);
-            // Let the muzzle lead the fall slightly so the dog rolls forward rather than tipping in place.
-            transform.position = _standingPosition +
-                (_standingRotation * Vector3.forward) * (0.45f * easedProgress);
+            transform.rotation = roll;
+            transform.position = _dogFrontBottomPivot - roll * _dogPivotOffset;
         }
         else if (_templateID == "test-sphere-enemy" && _smileDots.Count > 0)
         {
