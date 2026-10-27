@@ -110,8 +110,7 @@ public static class WorldTerrainGenerator
         bool confirmed = EditorUtility.DisplayDialog(
             "Generate starter world",
             "Будет создан отдельный TerrainData именно для этой сцены. Размер исходного ландшафта сохранится; " +
-            "персонаж останется на карте и будет установлен на поверхность. " +
-            "После генерации сохрани сцену сочетанием Ctrl+S.",
+            "персонаж останется на карте и будет установлен на поверхность. После генерации сцена будет сохранена автоматически.",
             "Создать ландшафт",
             "Отмена");
 
@@ -260,21 +259,43 @@ public static class WorldTerrainGenerator
         terrain.Flush();
 
         Scene scene = terrain.gameObject.scene;
+        bool sceneSaved = false;
         if (scene.IsValid())
         {
             EditorSceneManager.MarkSceneDirty(scene);
+
+            // The TerrainData asset is not enough: the scene must also persist its reference to it.
+            // Save automatically so the generated landscape survives closing/reopening Unity.
+            if (!string.IsNullOrEmpty(scene.path))
+            {
+                sceneSaved = EditorSceneManager.SaveScene(scene);
+            }
         }
 
         SceneView.RepaintAll();
-        Debug.Log(
-            "World terrain generated. TerrainData: " + terrainAssetPath +
-            ". Source dimensions were preserved; player position was restored to the terrain surface.");
-        EditorUtility.DisplayDialog(
-            "Terrain generated",
-            "Готово: холмы, горный периметр, три процедурные текстуры и невидимые ограничители созданы. " +
-            "Размер Terrain сохранён, персонаж установлен на поверхность, исходный TerrainData не перезаписан. " +
-            "Нажми Ctrl+S, чтобы сохранить изменения сцены.",
-            "OK");
+
+        if (sceneSaved)
+        {
+            Debug.Log(
+                "World terrain generated and scene saved. TerrainData: " + terrainAssetPath +
+                ". Source dimensions were preserved; player position was restored to the terrain surface.");
+            EditorUtility.DisplayDialog(
+                "Terrain generated and saved",
+                "Готово: рельеф, текстуры и ограничители сохранены. Сцена тоже сохранена автоматически. " +
+                "Исходный TerrainData не перезаписан.",
+                "OK");
+        }
+        else
+        {
+            Debug.LogWarning(
+                "World terrain data was saved, but the scene has no file path or could not be saved. " +
+                "Use File > Save or Ctrl+S to persist its TerrainData reference.");
+            EditorUtility.DisplayDialog(
+                "Terrain generated",
+                "Данные ландшафта сохранены, но Unity не смогла автоматически сохранить сцену. " +
+                "Нажми Ctrl+S или выбери File > Save, чтобы сохранить ссылку на новый ландшафт.",
+                "OK");
+        }
     }
 
     private static void GenerateHeights(TerrainData data, Vector2 spawnUv)
