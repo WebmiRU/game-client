@@ -56,6 +56,8 @@ public sealed class GameServerLoginUI : MonoBehaviour
         public float attackSpeed;
         public float retryAfter;
         public int requestId;
+        public int playerHealth;
+        public int playerMaxHealth;
         public WorldMonsterData monster;
         public WorldPlayerData[] players;
         public WorldMonsterData[] monsters;
@@ -93,6 +95,8 @@ public sealed class GameServerLoginUI : MonoBehaviour
     private sealed class WorldPlayerData
     {
         public string playerId;
+        public int health;
+        public int maxHealth;
         public WorldVector3 position;
         public WorldQuaternion rotation;
         public WorldColliderData collider;
@@ -212,6 +216,8 @@ public sealed class GameServerLoginUI : MonoBehaviour
     private bool _hasPendingTargetSelection;
     private float _serverAttackSpeed = 1f;
     private bool _hasServerAttackSpeed;
+    private int _playerHealth = 100;
+    private int _playerMaxHealth = 100;
 
     private TcpClient _client;
     private NetworkStream _stream;
@@ -249,6 +255,8 @@ public sealed class GameServerLoginUI : MonoBehaviour
     /// <summary>Effective attacks per second last supplied by the game server.</summary>
     public float ServerAttackSpeed => _serverAttackSpeed;
     public bool HasServerAttackSpeed => _hasServerAttackSpeed;
+    public int PlayerHealth => _playerHealth;
+    public int PlayerMaxHealth => _playerMaxHealth;
 
     private void Awake()
     {
@@ -921,6 +929,12 @@ public sealed class GameServerLoginUI : MonoBehaviour
 
     private void ApplyWorldSnapshot(ServerMessage message)
     {
+        if (message.playerMaxHealth > 0)
+        {
+            _playerMaxHealth = message.playerMaxHealth;
+            _playerHealth = Mathf.Clamp(message.playerHealth, 0, _playerMaxHealth);
+        }
+
         if (message.attackSpeed > 0f &&
             !float.IsNaN(message.attackSpeed) &&
             !float.IsInfinity(message.attackSpeed))
