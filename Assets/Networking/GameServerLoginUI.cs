@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.IO;
 using System.Net.Sockets;
 using System.Text;
@@ -35,6 +36,23 @@ public sealed class GameServerLoginUI : MonoBehaviour
         public string playerId;
     }
 
+    [Serializable]
+    private sealed class ServerMessage
+    {
+        public string type;
+        public bool success;
+        public string message;
+        public float x;
+        public float y;
+        public float z;
+    }
+
+    private sealed class QueuedServerMessage
+    {
+        public int operationId;
+        public string json;
+    }
+
     private string _host = "127.0.0.1";
     private readonly string _port = DefaultPort.ToString();
     private string _status = "Ожидание запуска...";
@@ -50,6 +68,11 @@ public sealed class GameServerLoginUI : MonoBehaviour
     private bool _isAuthenticating;
     private bool _isAuthenticated;
     private int _operationId;
+
+    private readonly ConcurrentQueue<QueuedServerMessage> _incomingMessages =
+        new ConcurrentQueue<QueuedServerMessage>();
+    private bool _hasPendingSpawn;
+    private Vector3 _pendingSpawnSurfacePosition;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     private static void CreateLoginPanel()
@@ -68,6 +91,21 @@ public sealed class GameServerLoginUI : MonoBehaviour
     {
         // Development mode: connect and authenticate automatically on Play.
         ConnectToServerAsync();
+    }
+
+    private void Update()
+    {
+        while (_incomingMessages.TryDequeue(out QueuedServerMessage queued))
+        {
+            if (queued == null || queued.operationId != _operationId)
+            {
+                continue;
+            }
+
+            ProcessServerMessage(queued.json);
+        }
+
+        ApplyPendingSpawn();
     }
 
     private void OnDestroy()
@@ -290,6 +328,10 @@ public sealed class GameServerLoginUI : MonoBehaviour
             Debug.Log(
                 "GameServer: authentication succeeded; username=" + _authenticatedUsername +
                 ", protocol=" + response.protocolVersion);
+
+            // The server sends the spawn point as the next line after auth_result.
+            // Keep reading subsequent server messages without blocking Unity's main thread.
+            _ = ReceiveServerMessagesAsync(reader, operationId);
         }
         catch (Exception exception)
         {
@@ -312,6 +354,138 @@ public sealed class GameServerLoginUI : MonoBehaviour
         }
     }
 
+    private async Task ReceiveServerMessagesAsync(StreamReader reader, int operationId)
+    {
+        try
+        {
+            while (operationId == _operationId)
+            {
+                string line = await reader.ReadLineAsync().ConfigureAwait(false);
+                if (operationId != _operationId)
+                {
+                    return;
+                }
+
+                if (line == null)
+                {
+                    QueueIncomingMessage(operationId, "{\\"type\\":\\"connection_closed\\"}");
+                    return;
+                }
+
+                if (!string.IsNullOrWhiteSpace(line))
+                {
+                    QueueIncomingMessage(operationId, line);
+                }
+            }
+        }
+        catch (Exception exception)
+        {
+            if (operationId == _operationId)
+            {
+                ServerMessage error = new ServerMessage
+                {
+                    type = "transport_error",
+                    message = exception.Message
+                };
+                QueueIncomingMessage(operationId, JsonUtility.ToJson(error));
+            }
+        }
+    }
+
+    private void QueueIncomingMessage(int operationId, string json)
+    {
+        _incomingMessages.Enqueue(new QueuedServerMessage
+        {
+            operationId = operationId,
+            json = json
+        });
+    }
+
+    private void ProcessServerMessage(string json)
+    {
+        ServerMessage message;
+        try
+        {
+            message = JsonUtility.FromJson<ServerMessage>(json);
+        }
+        catch (Exception exception)
+        {
+            Debug.LogWarning("GameServer: invalid server message (" + exception.Message + ")");
+            return;
+        }
+
+        if (message == null || string.IsNullOrWhiteSpace(message.type))
+        {
+            Debug.LogWarning("GameServer: received an empty server message.");
+            return;
+        }
+
+        switch (message.type)
+        {
+            case "spawn":
+                if (!message.success)
+                {
+                    _status = "Ошибка получения точки появления: " + message.message;
+                    Debug.LogError("GameServer: spawn request failed; reason=" + message.message);
+                    return;
+                }
+
+                _pendingSpawnSurfacePosition = new Vector3(message.x, message.y, message.z);
+                _hasPendingSpawn = true;
+                _status = "Авторизован; координаты получены";
+                Debug.Log("GameServer: spawn received at " + _pendingSpawnSurfacePosition);
+                break;
+
+            case "connection_closed":
+                if (_isConnected)
+                {
+                    _status = "Сервер закрыл соединение";
+                    Debug.LogWarning("GameServer: server closed the TCP connection.");
+                    DisconnectFromServer(false);
+                }
+                break;
+
+            case "transport_error":
+                if (_isConnected)
+                {
+                    _status = "Ошибка чтения от сервера: " + message.message;
+                    Debug.LogError("GameServer: TCP receive failed (" + message.message + ")");
+                    DisconnectFromServer(false);
+                }
+                break;
+
+            case "error":
+            case "protocol_error":
+                _status = "Ошибка сервера: " + message.message;
+                Debug.LogWarning("GameServer: server error; type=" + message.type + ", reason=" + message.message);
+                break;
+
+            default:
+                Debug.Log("GameServer: server message received; type=" + message.type);
+                break;
+        }
+    }
+
+    private void ApplyPendingSpawn()
+    {
+        if (!_hasPendingSpawn || !_isAuthenticated)
+        {
+            return;
+        }
+
+        PlayerController player = FindFirstObjectByType<PlayerController>();
+        if (player == null)
+        {
+            // A scene may still be loading when the spawn message arrives. Keep the
+            // position pending and apply it as soon as the player's controller exists.
+            return;
+        }
+
+        player.SetSpawnSurfacePosition(_pendingSpawnSurfacePosition);
+        _hasPendingSpawn = false;
+        _status = "Авторизован; персонаж появился";
+    }
+
     private void DisconnectFromServer()
     {
         DisconnectFromServer(true);
@@ -326,6 +500,8 @@ public sealed class GameServerLoginUI : MonoBehaviour
         _isAuthenticating = false;
         _isAuthenticated = false;
         _authenticatedUsername = string.Empty;
+        _hasPendingSpawn = false;
+        while (_incomingMessages.TryDequeue(out _)) { }
 
         if (updateStatus)
         {
