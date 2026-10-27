@@ -1154,7 +1154,10 @@ public sealed class GameServerLoginUI : MonoBehaviour
             Vector3 directionToCamera = currentCamera.transform.position - label.position;
             if (directionToCamera.sqrMagnitude > 0.0001f)
             {
-                label.rotation = Quaternion.LookRotation(directionToCamera, Vector3.up);
+                // TextMesh's visible front is opposite to the default billboard face in this
+                // setup; the half-turn keeps the text readable instead of mirrored.
+                label.rotation = Quaternion.LookRotation(directionToCamera, Vector3.up) *
+                    Quaternion.Euler(0f, 180f, 0f);
             }
         }
     }
