@@ -27,18 +27,14 @@ public class ThirdPersonCameraController : MonoBehaviour
     {
         if (target == null)
         {
-            Debug.LogError(
-                "ThirdPersonCameraController: Target is not assigned!"
-            );
+            Debug.LogError("ThirdPersonCameraController: Target is not assigned!");
 
             enabled = false;
             return;
         }
 
         // Сохраняем начальное направление камеры.
-        Vector3 pivot = target.position
-                        + Vector3.up * targetHeight;
-
+        Vector3 pivot = target.position + Vector3.up * targetHeight;
         Vector3 offset = transform.position - pivot;
 
         if (offset.sqrMagnitude > 0.01f)
