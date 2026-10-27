@@ -27,6 +27,7 @@ public sealed class WorldTargetable : MonoBehaviour
     public string TargetType { get; private set; } = string.Empty;
     public string TargetID { get; private set; } = string.Empty;
     public string DisplayName { get; private set; } = string.Empty;
+    public bool IsAlive => _alive;
 
     public void Configure(string targetType, string targetID, string displayName, TextMesh nameLabel)
     {
