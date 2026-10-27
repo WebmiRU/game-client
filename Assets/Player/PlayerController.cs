@@ -1131,7 +1131,7 @@ public class PlayerController : MonoBehaviour
 
         Ray ray = playerCamera.ScreenPointToRay(Mouse.current.position.ReadValue());
         RaycastHit[] hits = Physics.RaycastAll(
-            ray, 5000f, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
+            ray, 5000f, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Collide);
 
         float nearestDistance = float.PositiveInfinity;
         Collider nearestCollider = null;
@@ -1139,6 +1139,14 @@ public class PlayerController : MonoBehaviour
         {
             Collider hitCollider = hit.collider;
             if (hitCollider == null)
+            {
+                continue;
+            }
+
+            // A falling monster's collider is a trigger so it cannot push the player,
+            // but its target remains clickable. Ignore unrelated trigger volumes.
+            if (hitCollider.isTrigger &&
+                hitCollider.GetComponentInParent<WorldTargetable>() == null)
             {
                 continue;
             }
