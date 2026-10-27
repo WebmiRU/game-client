@@ -4,11 +4,17 @@ using UnityEngine.InputSystem;
 
 public class PlayerController: MonoBehaviour
 {
-    [SerializedField] private CharacterController characterController;
-    [SerializedField] private CinemachineCamera cinemachineCamera;
+    [SerializeField] private CharacterController characterController;
+    [SerializeField] private CinemachineCamera cinemachineCamera;
 
+    private Vector2 _move;
     public void OnMove(InputValue val)
     {
-        Debug.Log("Move 101");
+        _move = val.Get<Vector2>();
+    }
+
+    private void Update()
+    {
+        characterController.Move(_move * Time.deltaTime);
     }
 }
