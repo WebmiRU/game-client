@@ -1265,6 +1265,13 @@ public sealed class GameServerLoginUI : MonoBehaviour
             targetable.SetAlive(monster.alive);
         }
 
+        MonsterMotionPresentation motionPresentation = view.GetComponent<MonsterMotionPresentation>();
+        if (!monster.alive && motionPresentation != null)
+        {
+            // Once the server confirms death, the death presentation owns the transform.
+            motionPresentation.Stop();
+        }
+
         MonsterDeathPresentation deathPresentation = view.GetComponent<MonsterDeathPresentation>();
         if (deathPresentation == null)
         {
