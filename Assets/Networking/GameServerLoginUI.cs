@@ -154,6 +154,8 @@ public sealed class GameServerLoginUI : MonoBehaviour
         new Dictionary<string, Material>();
     private readonly Dictionary<string, Texture2D> _monsterTextures =
         new Dictionary<string, Texture2D>();
+    private Terrain _worldTerrain;
+    private Material _smileyFaceMaterial;
 
     private TcpClient _client;
     private NetworkStream _stream;
@@ -252,6 +254,12 @@ public sealed class GameServerLoginUI : MonoBehaviour
             }
         }
         _monsterTextures.Clear();
+
+        if (_smileyFaceMaterial != null)
+        {
+            Destroy(_smileyFaceMaterial);
+            _smileyFaceMaterial = null;
+        }
 
         if (Instance == this)
         {
@@ -782,6 +790,7 @@ public sealed class GameServerLoginUI : MonoBehaviour
 
             visibleMonsterIDs.Add(monster.id);
             string templateID = monster.templateId ?? string.Empty;
+            float modelSize = templateID == "test-sphere-enemy" ? 1.4f : 1.2f;
             bool hasView = _monsterViews.TryGetValue(monster.id, out GameObject view) &&
                 view != null;
             bool templateChanged = _monsterTemplateIds.TryGetValue(monster.id, out string oldTemplate) &&
@@ -800,6 +809,7 @@ public sealed class GameServerLoginUI : MonoBehaviour
                     : PrimitiveType.Sphere;
                 view = GameObject.CreatePrimitive(primitiveType);
                 view.name = monster.name + " (ID " + monster.id + ")";
+                view.transform.localScale = Vector3.one * modelSize;
 
                 Collider collider = view.GetComponent<Collider>();
                 if (collider != null)
@@ -817,6 +827,10 @@ public sealed class GameServerLoginUI : MonoBehaviour
                     }
                 }
 
+                if (templateID == "test-sphere-enemy")
+                {
+                    CreateSmileyFace(view);
+                }
                 CreateMonsterNameLabel(view, monster);
                 _monsterViews[monster.id] = view;
                 _monsterTemplateIds[monster.id] = templateID;
@@ -827,29 +841,38 @@ public sealed class GameServerLoginUI : MonoBehaviour
                 view.name = monster.name + " (ID " + monster.id + ")";
             }
 
-            float modelSize = templateID == "test-sphere-enemy" ? 1.4f : 1.2f;
             view.transform.localScale = Vector3.one * modelSize;
 
-            // Server positions are ground-surface positions; center the primitive on that surface.
+            // The server sends the monster's base/contact position. While it is falling,
+            // preserve the exact server Y; once landed, align the rendered base to this
+            // client's Terrain to avoid a visible hover caused by tiny heightmap differences.
+            float baseY = monster.position.y;
+            bool isFalling = string.Equals(monster.action, "falling", StringComparison.OrdinalIgnoreCase);
+            if (!isFalling && TryGetTerrainSurfaceY(monster.position.x, monster.position.z, out float terrainY))
+            {
+                baseY = terrainY;
+            }
+
             view.transform.position = new Vector3(
                 monster.position.x,
-                monster.position.y + modelSize * 0.5f,
+                baseY + modelSize * 0.5f,
                 monster.position.z);
 
-            if (monster.rotation != null)
-            {
-                Quaternion rotation = new Quaternion(
+            // Rotation always comes from the server. Identity (+Z forward) is the explicit
+            // default for an entity whose server-side rotation is not otherwise set.
+            Quaternion rotation = monster.rotation != null
+                ? new Quaternion(
                     monster.rotation.x, monster.rotation.y,
-                    monster.rotation.z, monster.rotation.w);
-                float rotationMagnitudeSquared =
-                    rotation.x * rotation.x +
-                    rotation.y * rotation.y +
-                    rotation.z * rotation.z +
-                    rotation.w * rotation.w;
-                view.transform.rotation = rotationMagnitudeSquared > 0.0001f
-                    ? rotation.normalized
-                    : Quaternion.identity;
-            }
+                    monster.rotation.z, monster.rotation.w)
+                : Quaternion.identity;
+            float rotationMagnitudeSquared =
+                rotation.x * rotation.x +
+                rotation.y * rotation.y +
+                rotation.z * rotation.z +
+                rotation.w * rotation.w;
+            view.transform.rotation = rotationMagnitudeSquared > 0.0001f
+                ? rotation.normalized
+                : Quaternion.identity;
 
             Transform labelTransform = view.transform.Find("NameLabel");
             if (labelTransform != null)
@@ -906,8 +929,11 @@ public sealed class GameServerLoginUI : MonoBehaviour
         }
 
         bool isSmiley = templateID == "test-sphere-enemy";
-        Texture2D texture = isSmiley ? CreateSmileyTexture() : CreateWarningTexture();
-        texture.name = isSmiley ? "Enemy2_YellowSmileyTexture" : "Enemy1_WarningTexture";
+        Texture2D texture = isSmiley ? null : CreateWarningTexture();
+        if (texture != null)
+        {
+            texture.name = "Enemy1_WarningTexture";
+        }
 
         Shader shader = Shader.Find("Universal Render Pipeline/Lit");
         if (shader == null)
@@ -920,23 +946,23 @@ public sealed class GameServerLoginUI : MonoBehaviour
         }
         if (shader == null)
         {
-            Destroy(texture);
+            if (texture != null)
+            {
+                Destroy(texture);
+            }
             Debug.LogWarning("GameServer: no compatible shader found for test monsters.");
             return null;
         }
 
         Material material = new Material(shader);
-        material.name = isSmiley ? "Enemy2_YellowSmileyMaterial" : "Enemy1_WarningMaterial";
+        material.name = isSmiley ? "Enemy2_YellowSphereMaterial" : "Enemy1_WarningMaterial";
         material.mainTexture = texture;
-        material.color = Color.white;
+        material.color = isSmiley ? new Color(1f, 0.84f, 0.02f) : Color.white;
 
-        if (isSmiley && material.HasProperty("_EmissionColor"))
+        if (texture != null)
         {
-            material.EnableKeyword("_EMISSION");
-            material.SetColor("_EmissionColor", new Color(0.35f, 0.28f, 0f));
+            _monsterTextures[materialKey] = texture;
         }
-
-        _monsterTextures[materialKey] = texture;
         _monsterMaterials[materialKey] = material;
         return material;
     }
@@ -970,58 +996,72 @@ public sealed class GameServerLoginUI : MonoBehaviour
         return texture;
     }
 
-    private static Texture2D CreateSmileyTexture()
+    private void CreateSmileyFace(GameObject view)
     {
-        const int size = 128;
-        Texture2D texture = new Texture2D(size, size, TextureFormat.RGBA32, false);
-        Color32[] pixels = new Color32[size * size];
-        Color32 yellow = new Color32(255, 218, 0, 255);
-        Color32 black = new Color32(28, 24, 12, 255);
-        Color32 highlight = new Color32(255, 247, 130, 255);
-
-        for (int y = 0; y < size; y++)
+        if (_smileyFaceMaterial == null)
         {
-            for (int x = 0; x < size; x++)
+            Shader shader = Shader.Find("Universal Render Pipeline/Lit");
+            if (shader == null)
             {
-                float u = (x + 0.5f) / size;
-                float v = (y + 0.5f) / size;
-                Color32 color = yellow;
-
-                float highlightDistance = (u - 0.25f) * (u - 0.25f) +
-                    (v - 0.82f) * (v - 0.82f);
-                if (highlightDistance < 0.0035f)
-                {
-                    color = highlight;
-                }
-
-                float leftEye = (u - 0.34f) * (u - 0.34f) +
-                    (v - 0.63f) * (v - 0.63f);
-                float rightEye = (u - 0.66f) * (u - 0.66f) +
-                    (v - 0.63f) * (v - 0.63f);
-                if (leftEye < 0.0020f || rightEye < 0.0020f)
-                {
-                    color = black;
-                }
-
-                if (u >= 0.28f && u <= 0.72f)
-                {
-                    float t = (u - 0.28f) / 0.44f;
-                    float smileY = 0.43f - 0.18f * Mathf.Sin(t * Mathf.PI);
-                    if (Mathf.Abs(v - smileY) < 0.016f)
-                    {
-                        color = black;
-                    }
-                }
-
-                pixels[y * size + x] = color;
+                shader = Shader.Find("Standard");
             }
+            if (shader == null)
+            {
+                shader = Shader.Find("Unlit/Color");
+            }
+
+            if (shader == null)
+            {
+                Debug.LogWarning("GameServer: no compatible shader found for the smiley face.");
+                return;
+            }
+
+            _smileyFaceMaterial = new Material(shader)
+            {
+                name = "Enemy2_FaceFeatureMaterial",
+                color = new Color(0.055f, 0.045f, 0.02f)
+            };
         }
 
-        texture.SetPixels32(pixels);
-        texture.wrapMode = TextureWrapMode.Repeat;
-        texture.filterMode = FilterMode.Bilinear;
-        texture.Apply(false, true);
-        return texture;
+        // The face is built in the monster's local space and never billboarded.
+        // Unity's sphere has a base radius of 0.5; these points sit on its +Z hemisphere.
+        CreateSmileyDot(view.transform, "LeftEye", new Vector3(-0.14f, 0.12f, 0.463f), 0.075f);
+        CreateSmileyDot(view.transform, "RightEye", new Vector3(0.14f, 0.12f, 0.463f), 0.075f);
+
+        // Seven small dots make a curved smile that follows the sphere as it rotates.
+        for (int i = 0; i < 7; i++)
+        {
+            float t = i / 6f;
+            float x = Mathf.Lerp(-0.17f, 0.17f, t);
+            float y = -0.105f + 0.085f * Mathf.Pow(Mathf.Abs(x) / 0.17f, 2f);
+            float z = Mathf.Sqrt(Mathf.Max(0.01f, 0.25f - x * x - y * y)) + 0.004f;
+            CreateSmileyDot(
+                view.transform,
+                "Smile" + (i + 1),
+                new Vector3(x, y, z),
+                0.043f);
+        }
+    }
+
+    private void CreateSmileyDot(Transform parent, string dotName, Vector3 localPosition, float diameter)
+    {
+        GameObject dot = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+        dot.name = dotName;
+        dot.transform.SetParent(parent, false);
+        dot.transform.localPosition = localPosition;
+        dot.transform.localScale = Vector3.one * diameter;
+
+        Collider collider = dot.GetComponent<Collider>();
+        if (collider != null)
+        {
+            Destroy(collider);
+        }
+
+        Renderer renderer = dot.GetComponent<Renderer>();
+        if (renderer != null)
+        {
+            renderer.sharedMaterial = _smileyFaceMaterial;
+        }
     }
 
     private static void CreateMonsterNameLabel(GameObject view, WorldMonsterData monster)
@@ -1044,6 +1084,49 @@ public sealed class GameServerLoginUI : MonoBehaviour
         label.richText = false;
     }
 
+    private bool TryGetTerrainSurfaceY(float worldX, float worldZ, out float surfaceY)
+    {
+        surfaceY = 0f;
+        if (_worldTerrain == null || _worldTerrain.terrainData == null)
+        {
+            _worldTerrain = Terrain.activeTerrain;
+            if (_worldTerrain == null)
+            {
+                Terrain[] terrains = FindObjectsByType<Terrain>(FindObjectsSortMode.None);
+                if (terrains.Length > 0)
+                {
+                    _worldTerrain = terrains[0];
+                }
+            }
+        }
+
+        if (_worldTerrain == null || _worldTerrain.terrainData == null)
+        {
+            return false;
+        }
+
+        TerrainData data = _worldTerrain.terrainData;
+        Vector3 origin = _worldTerrain.transform.position;
+        Vector3 scale = _worldTerrain.transform.lossyScale;
+        float width = data.size.x * Mathf.Abs(scale.x);
+        float length = data.size.z * Mathf.Abs(scale.z);
+        if (width <= 0f || length <= 0f)
+        {
+            return false;
+        }
+
+        float normalizedX = (worldX - origin.x) / width;
+        float normalizedZ = (worldZ - origin.z) / length;
+        if (normalizedX < 0f || normalizedX > 1f || normalizedZ < 0f || normalizedZ > 1f)
+        {
+            return false;
+        }
+
+        surfaceY = origin.y +
+            data.GetInterpolatedHeight(normalizedX, normalizedZ) * Mathf.Abs(scale.y);
+        return true;
+    }
+
     private void LateUpdate()
     {
         Camera currentCamera = Camera.main;
@@ -1060,19 +1143,8 @@ public sealed class GameServerLoginUI : MonoBehaviour
                 continue;
             }
 
-            // The smiley is an appearance-only texture; keep it facing the camera.
-            // Server position/action/state remains authoritative and is never changed.
-            if (_monsterTemplateIds.TryGetValue(pair.Key, out string templateID) &&
-                templateID == "test-sphere-enemy")
-            {
-                Vector3 toCamera = currentCamera.transform.position - view.transform.position;
-                toCamera.y = 0f;
-                if (toCamera.sqrMagnitude > 0.0001f)
-                {
-                    view.transform.rotation = Quaternion.LookRotation(toCamera, Vector3.up);
-                }
-            }
-
+            // Only the nameplate faces the camera. Monster models and the smiley face
+            // remain fixed to the server-provided quaternion.
             Transform label = view.transform.Find("NameLabel");
             if (label == null)
             {
