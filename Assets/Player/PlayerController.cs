@@ -204,8 +204,7 @@ public class PlayerController : MonoBehaviour
              !System.String.Equals(
                 _meleeTarget.TargetType,
                 "player",
-                System.StringComparison.OrdinalIgnoreCase)) ||
-            (_gameServerLogin != null && !_gameServerLogin.IsTargetSelected(_meleeTarget)))
+                System.StringComparison.OrdinalIgnoreCase)))
         {
             CancelMeleeAttack();
             return;
@@ -281,7 +280,10 @@ public class PlayerController : MonoBehaviour
 
         float attackInterval = 1f / GetCurrentServerAttackSpeed();
         int requestId = NextAttackRequestId();
-        if (_gameServerLogin != null && _gameServerLogin.RequestAttack(requestId))
+        if (_gameServerLogin != null && _gameServerLogin.RequestAttack(
+            requestId,
+            _meleeTarget.TargetType,
+            _meleeTarget.TargetID))
         {
             _attackRequestPending = true;
             _pendingAttackRequestId = requestId;
@@ -1184,20 +1186,14 @@ public class PlayerController : MonoBehaviour
             }
             else
             {
-                CancelMeleeAttack();
+                // Selecting a different entity changes only the UI target. It must not
+                // cancel an existing move order or retarget an active melee command.
                 if (_gameServerLogin != null)
                 {
                     _gameServerLogin.SelectTarget(clickedTarget);
                 }
-                _hasMoveTarget = false;
-                if (_moveTargetInstance != null)
-                {
-                    _moveTargetInstance.SetActive(false);
-                }
             }
 
-            _hasSentNetworkState = false;
-            _nextNetworkSyncTime = 0f;
             return;
         }
 
