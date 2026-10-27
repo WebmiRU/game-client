@@ -29,6 +29,7 @@ public class PlayerController : MonoBehaviour
     private WorldTargetable _meleeTarget;
     private Vector3 _meleeApproachDirection;
     private bool _isInMeleeRange;
+    private bool _isMeleeCombatActive;
     private float _lastMeleeAttackTime = float.NegativeInfinity;
     private float _smoothedVisualWorldY;
     private float _visualWorldYVelocity;
@@ -144,6 +145,7 @@ public class PlayerController : MonoBehaviour
         _meleeApproachDirection = fromTargetToPlayer.sqrMagnitude > 0.0001f
             ? fromTargetToPlayer.normalized
             : -transform.forward;
+        _isMeleeCombatActive = true;
         _lastMeleeAttackTime = float.NegativeInfinity;
         _isInMeleeRange = false;
         Debug.Log("Melee combat started: target=" + target.DisplayName + " (" + target.TargetID + ").");
@@ -157,6 +159,7 @@ public class PlayerController : MonoBehaviour
         }
 
         _meleeTarget = null;
+        _isMeleeCombatActive = false;
         _isInMeleeRange = false;
         _lastMeleeAttackTime = float.NegativeInfinity;
         _hasMoveTarget = false;
@@ -174,16 +177,21 @@ public class PlayerController : MonoBehaviour
 
     private void UpdateMeleeCombatState()
     {
-        if (_meleeTarget == null)
+        if (!_isMeleeCombatActive)
         {
             return;
         }
 
-        if (!_meleeTarget.gameObject.activeInHierarchy ||
+        // Unity destroyed objects compare equal to null. Keep a separate combat-active
+        // flag so a despawned target also cancels pursuit rather than leaving the last
+        // movement destination running forever.
+        if (_meleeTarget == null ||
+            !_meleeTarget.gameObject.activeInHierarchy ||
             !System.String.Equals(
                 _meleeTarget.TargetType,
                 "monster",
-                System.StringComparison.OrdinalIgnoreCase))
+                System.StringComparison.OrdinalIgnoreCase) ||
+            (_gameServerLogin != null && !_gameServerLogin.IsTargetSelected(_meleeTarget)))
         {
             CancelMeleeAttack();
             return;
