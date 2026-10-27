@@ -20,6 +20,7 @@ public class PlayerController : MonoBehaviour
     private Vector3 _targetPosition;
     private bool _hasMoveTarget;
     private GameObject _moveTargetInstance;
+    private WorldTargetable _hoveredWorldTarget;
 
     private GameServerLoginUI _gameServerLogin;
     private ThirdPersonCameraController _cameraController;
@@ -521,7 +522,9 @@ public class PlayerController : MonoBehaviour
             return;
         }
 
-        // Clicking the world selects a Terrain point to walk to.
+        UpdateHoveredWorldTarget();
+
+        // Clicking an entity selects it; clicking the Terrain still issues a move order.
         if (Mouse.current != null && Mouse.current.leftButton.wasPressedThisFrame)
         {
             TrySetMoveTargetFromMouse();
@@ -623,8 +626,98 @@ public class PlayerController : MonoBehaviour
         _nextNetworkHeartbeatTime = now + NetworkStateHeartbeatInterval;
     }
 
+    private void UpdateHoveredWorldTarget()
+    {
+        WorldTargetable nextTarget = GetWorldTargetUnderMouse();
+        if (_hoveredWorldTarget == nextTarget)
+        {
+            return;
+        }
+
+        if (_hoveredWorldTarget != null)
+        {
+            _hoveredWorldTarget.SetHovered(false);
+        }
+        _hoveredWorldTarget = nextTarget;
+        if (_hoveredWorldTarget != null)
+        {
+            _hoveredWorldTarget.SetHovered(true);
+        }
+    }
+
+    private WorldTargetable GetWorldTargetUnderMouse()
+    {
+        if (Mouse.current == null)
+        {
+            return null;
+        }
+
+        if (playerCamera == null)
+        {
+            playerCamera = Camera.main;
+        }
+        if (playerCamera == null)
+        {
+            return null;
+        }
+
+        Ray ray = playerCamera.ScreenPointToRay(Mouse.current.position.ReadValue());
+        RaycastHit[] hits = Physics.RaycastAll(
+            ray, 5000f, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
+
+        float nearestDistance = float.PositiveInfinity;
+        Collider nearestCollider = null;
+        foreach (RaycastHit hit in hits)
+        {
+            Collider hitCollider = hit.collider;
+            if (hitCollider == null)
+            {
+                continue;
+            }
+
+            Transform hitTransform = hitCollider.transform;
+            if (hitTransform == transform || hitTransform.IsChildOf(transform))
+            {
+                continue;
+            }
+
+            if (hit.distance < nearestDistance)
+            {
+                nearestDistance = hit.distance;
+                nearestCollider = hitCollider;
+            }
+        }
+
+        // The nearest hit wins. Terrain or a wall in front of a target blocks selection.
+        return nearestCollider != null
+            ? nearestCollider.GetComponentInParent<WorldTargetable>()
+            : null;
+    }
+
     private void TrySetMoveTargetFromMouse()
     {
+        WorldTargetable clickedTarget = GetWorldTargetUnderMouse();
+        if (clickedTarget != null)
+        {
+            if (_gameServerLogin == null)
+            {
+                _gameServerLogin = GameServerLoginUI.Instance;
+            }
+            if (_gameServerLogin != null)
+            {
+                _gameServerLogin.SelectTarget(clickedTarget);
+            }
+
+            _hasMoveTarget = false;
+            if (_moveTargetInstance != null)
+            {
+                _moveTargetInstance.SetActive(false);
+            }
+            _hasSentNetworkState = false;
+            _nextNetworkSyncTime = 0f;
+            return;
+        }
+
         // Resolve again in case the camera became active after this component's Awake.
         if (playerCamera == null)
         {

@@ -56,6 +56,7 @@ public sealed class GameServerLoginUI : MonoBehaviour
         public WorldPlayerData[] players;
         public WorldMonsterData[] monsters;
         public WorldGroundItemData[] items;
+        public WorldTargetData target;
     }
 
     [Serializable]
@@ -119,6 +120,22 @@ public sealed class GameServerLoginUI : MonoBehaviour
         public int quantity;
     }
 
+    [Serializable]
+    private sealed class WorldTargetData
+    {
+        public string type;
+        public string id;
+        public string name;
+    }
+
+    [Serializable]
+    private sealed class TargetRequest
+    {
+        public string type = "set_target";
+        public string targetType;
+        public string targetId;
+    }
+
     private sealed class QueuedServerMessage
     {
         public int operationId;
@@ -170,9 +187,16 @@ public sealed class GameServerLoginUI : MonoBehaviour
         new Dictionary<string, Texture2D>();
     private readonly Dictionary<string, GameObject> _otherPlayerCollisionViews =
         new Dictionary<string, GameObject>();
+    private readonly Dictionary<string, GameObject> _groundItemViews =
+        new Dictionary<string, GameObject>();
     private Terrain _worldTerrain;
     private Material _smileyFaceMaterial;
     private Material _dogMuzzleMaterial;
+    private Material _otherPlayerMaterial;
+    private Material _groundItemMaterial;
+    private string _selectedTargetType = string.Empty;
+    private string _selectedTargetID = string.Empty;
+    private bool _hasPendingTargetSelection;
 
     private TcpClient _client;
     private NetworkStream _stream;
@@ -196,6 +220,7 @@ public sealed class GameServerLoginUI : MonoBehaviour
     private readonly object _outgoingLock = new object();
     private string _latestOutgoingPlayerState;
     private string _latestOutgoingWorldInterest;
+    private string _latestOutgoingTarget;
     private SemaphoreSlim _outgoingSignal = new SemaphoreSlim(0);
 
     public static GameServerLoginUI Instance { get; private set; }
@@ -281,6 +306,16 @@ public sealed class GameServerLoginUI : MonoBehaviour
         {
             Destroy(_dogMuzzleMaterial);
             _dogMuzzleMaterial = null;
+        }
+        if (_otherPlayerMaterial != null)
+        {
+            Destroy(_otherPlayerMaterial);
+            _otherPlayerMaterial = null;
+        }
+        if (_groundItemMaterial != null)
+        {
+            Destroy(_groundItemMaterial);
+            _groundItemMaterial = null;
         }
 
         if (Instance == this)
@@ -723,6 +758,23 @@ public sealed class GameServerLoginUI : MonoBehaviour
                 }
                 break;
 
+            case "target_result":
+                _hasPendingTargetSelection = false;
+                if (message.success)
+                {
+                    ApplySelectedTarget(message.target);
+                    Debug.Log(message.target == null
+                        ? "GameServer: target cleared by server."
+                        : "GameServer: target selected; type=" + message.target.type +
+                          ", id=" + message.target.id + ", name=" + message.target.name);
+                }
+                else
+                {
+                    ApplySelectedTarget(null);
+                    Debug.LogWarning("GameServer: target selection rejected; reason=" + message.message);
+                }
+                break;
+
             case "connection_closed":
                 if (_isConnected)
                 {
@@ -830,7 +882,8 @@ public sealed class GameServerLoginUI : MonoBehaviour
         lock (_outgoingLock)
         {
             signalSender = string.IsNullOrEmpty(_latestOutgoingPlayerState) &&
-                string.IsNullOrEmpty(_latestOutgoingWorldInterest);
+                string.IsNullOrEmpty(_latestOutgoingWorldInterest) &&
+                string.IsNullOrEmpty(_latestOutgoingTarget);
             _latestOutgoingWorldInterest = json;
             signal = _outgoingSignal;
         }
@@ -846,6 +899,7 @@ public sealed class GameServerLoginUI : MonoBehaviour
         ApplyOtherPlayerCollisionViews(message.players);
 
         WorldMonsterData[] monsters = message.monsters ?? Array.Empty<WorldMonsterData>();
+        WorldGroundItemData[] items = message.items ?? Array.Empty<WorldGroundItemData>();
         HashSet<string> visibleMonsterIDs = new HashSet<string>();
 
         foreach (WorldMonsterData monster in monsters)
@@ -997,7 +1051,13 @@ public sealed class GameServerLoginUI : MonoBehaviour
                 TextMesh textMesh = labelTransform.GetComponent<TextMesh>();
                 if (textMesh != null)
                 {
-                    textMesh.text = monster.name + "  [" + monster.id + "]";
+                    textMesh.text = monster.name;
+                    WorldTargetable targetable = view.GetComponent<WorldTargetable>();
+                    if (targetable == null)
+                    {
+                        targetable = view.AddComponent<WorldTargetable>();
+                    }
+                    targetable.Configure("monster", monster.id, monster.name, textMesh);
                 }
             }
         }
@@ -1022,8 +1082,14 @@ public sealed class GameServerLoginUI : MonoBehaviour
             _monsterTemplateIds.Remove(staleID);
         }
 
+        ApplyGroundItemViews(items);
+        if (!_hasPendingTargetSelection)
+        {
+            ApplySelectedTarget(message.target);
+        }
+
         int playerCount = message.players == null ? 0 : message.players.Length;
-        int itemCount = message.items == null ? 0 : message.items.Length;
+        int itemCount = items.Length;
         string summary = "players=" + playerCount +
             ", monsters=" + monsters.Length +
             ", items=" + itemCount +
@@ -1303,11 +1369,15 @@ public sealed class GameServerLoginUI : MonoBehaviour
                     view == null)
                 {
                     view = GameObject.CreatePrimitive(PrimitiveType.Capsule);
-                    view.name = "CollisionProxy_Player_" + player.playerId;
+                    view.name = "Player_" + player.playerId;
                     Renderer renderer = view.GetComponent<Renderer>();
                     if (renderer != null)
                     {
-                        renderer.enabled = false;
+                        renderer.enabled = true;
+                        renderer.sharedMaterial = GetOrCreateSolidMaterial(
+                            ref _otherPlayerMaterial,
+                            "OtherPlayerMaterial",
+                            new Color(0.62f, 0.73f, 0.88f));
                     }
 
                     CapsuleCollider capsule = view.GetComponent<CapsuleCollider>();
@@ -1346,6 +1416,22 @@ public sealed class GameServerLoginUI : MonoBehaviour
                         view.transform.rotation = Quaternion.Euler(0f, rotation.eulerAngles.y, 0f);
                     }
                 }
+
+                string playerName = player.playerId;
+                Transform labelTransform = view.transform.Find("NameLabel");
+                TextMesh playerLabel = labelTransform != null
+                    ? labelTransform.GetComponent<TextMesh>()
+                    : null;
+                if (playerLabel == null)
+                {
+                    playerLabel = CreateWorldNameLabel(view, playerName, height * 0.5f + 0.45f);
+                }
+                WorldTargetable targetable = view.GetComponent<WorldTargetable>();
+                if (targetable == null)
+                {
+                    targetable = view.AddComponent<WorldTargetable>();
+                }
+                targetable.Configure("player", player.playerId, playerName, playerLabel);
             }
         }
 
@@ -1370,22 +1456,113 @@ public sealed class GameServerLoginUI : MonoBehaviour
 
     private static void CreateMonsterNameLabel(GameObject view, WorldMonsterData monster)
     {
+        TextMesh label = CreateWorldNameLabel(view, monster.name, 1.45f);
+        WorldTargetable targetable = view.GetComponent<WorldTargetable>();
+        if (targetable == null)
+        {
+            targetable = view.AddComponent<WorldTargetable>();
+        }
+        targetable.Configure("monster", monster.id, monster.name, label);
+    }
+
+    private static TextMesh CreateWorldNameLabel(GameObject view, string displayName, float worldOffset)
+    {
         GameObject labelObject = new GameObject("NameLabel");
         labelObject.transform.SetParent(view.transform, false);
 
-        const float modelSize = 2f;
-        labelObject.transform.localPosition = new Vector3(
-            0f, (modelSize * 0.5f + 0.45f) / modelSize, 0f);
-        labelObject.transform.localScale = Vector3.one / modelSize;
+        Vector3 parentScale = view.transform.lossyScale;
+        float scaleX = Mathf.Max(0.0001f, Mathf.Abs(parentScale.x));
+        float scaleY = Mathf.Max(0.0001f, Mathf.Abs(parentScale.y));
+        float scaleZ = Mathf.Max(0.0001f, Mathf.Abs(parentScale.z));
+        labelObject.transform.localPosition = new Vector3(0f, worldOffset / scaleY, 0f);
+        labelObject.transform.localScale = new Vector3(1f / scaleX, 1f / scaleY, 1f / scaleZ);
 
         TextMesh label = labelObject.AddComponent<TextMesh>();
-        label.text = monster.name + "  [" + monster.id + "]";
+        label.text = displayName;
         label.anchor = TextAnchor.MiddleCenter;
         label.alignment = TextAlignment.Center;
         label.fontSize = 42;
         label.characterSize = 0.1f;
         label.color = Color.white;
         label.richText = false;
+        return label;
+    }
+
+    private void ApplyGroundItemViews(WorldGroundItemData[] items)
+    {
+        HashSet<string> visibleItemIDs = new HashSet<string>();
+        foreach (WorldGroundItemData item in items)
+        {
+            if (item == null || string.IsNullOrWhiteSpace(item.id) || item.position == null)
+            {
+                continue;
+            }
+
+            visibleItemIDs.Add(item.id);
+            if (!_groundItemViews.TryGetValue(item.id, out GameObject view) || view == null)
+            {
+                view = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                view.name = "GroundItem_" + item.id;
+                Renderer renderer = view.GetComponent<Renderer>();
+                if (renderer != null)
+                {
+                    renderer.sharedMaterial = GetOrCreateSolidMaterial(
+                        ref _groundItemMaterial,
+                        "GroundItemMaterial",
+                        new Color(0.86f, 0.68f, 0.18f));
+                }
+                _groundItemViews[item.id] = view;
+            }
+
+            const float itemSize = 0.35f;
+            view.transform.localScale = Vector3.one * itemSize;
+            float baseY = item.position.y;
+            if (TryGetTerrainSurfaceY(item.position.x, item.position.z, out float terrainY))
+            {
+                baseY = terrainY;
+            }
+            view.transform.position = new Vector3(
+                item.position.x, baseY + itemSize * 0.5f, item.position.z);
+            view.transform.rotation = Quaternion.Euler(0f, 45f, 0f);
+
+            string itemName = string.IsNullOrWhiteSpace(item.name)
+                ? (string.IsNullOrWhiteSpace(item.itemTemplate) ? "Предмет" : item.itemTemplate)
+                : item.name;
+            string displayName = item.quantity > 1
+                ? itemName + " x" + item.quantity
+                : itemName;
+            Transform labelTransform = view.transform.Find("NameLabel");
+            TextMesh itemLabel = labelTransform != null
+                ? labelTransform.GetComponent<TextMesh>()
+                : null;
+            if (itemLabel == null)
+            {
+                itemLabel = CreateWorldNameLabel(view, displayName, itemSize * 0.5f + 0.45f);
+            }
+            WorldTargetable targetable = view.GetComponent<WorldTargetable>();
+            if (targetable == null)
+            {
+                targetable = view.AddComponent<WorldTargetable>();
+            }
+            targetable.Configure("item", item.id, displayName, itemLabel);
+        }
+
+        List<string> staleIDs = new List<string>();
+        foreach (KeyValuePair<string, GameObject> pair in _groundItemViews)
+        {
+            if (!visibleItemIDs.Contains(pair.Key))
+            {
+                if (pair.Value != null)
+                {
+                    Destroy(pair.Value);
+                }
+                staleIDs.Add(pair.Key);
+            }
+        }
+        foreach (string staleID in staleIDs)
+        {
+            _groundItemViews.Remove(staleID);
+        }
     }
 
     private bool TryGetTerrainSurfaceY(float worldX, float worldZ, out float surfaceY)
@@ -1486,7 +1663,104 @@ public sealed class GameServerLoginUI : MonoBehaviour
             }
         }
         _otherPlayerCollisionViews.Clear();
+
+        foreach (GameObject view in _groundItemViews.Values)
+        {
+            if (view != null)
+            {
+                Destroy(view);
+            }
+        }
+        _groundItemViews.Clear();
+        _selectedTargetType = string.Empty;
+        _selectedTargetID = string.Empty;
+        _hasPendingTargetSelection = false;
         _lastSnapshotSummary = string.Empty;
+    }
+
+    public void SelectTarget(WorldTargetable target)
+    {
+        if (target == null)
+        {
+            return;
+        }
+
+        WorldTargetData selected = new WorldTargetData
+        {
+            type = target.TargetType,
+            id = target.TargetID,
+            name = target.DisplayName
+        };
+        ApplySelectedTarget(selected);
+        _hasPendingTargetSelection = true;
+
+        if (!IsReadyForPlayerState || _writer == null ||
+            string.IsNullOrWhiteSpace(selected.type) || string.IsNullOrWhiteSpace(selected.id))
+        {
+            _hasPendingTargetSelection = false;
+            return;
+        }
+
+        string json = JsonUtility.ToJson(new TargetRequest
+        {
+            type = "set_target",
+            targetType = selected.type,
+            targetId = selected.id
+        });
+
+        SemaphoreSlim signal;
+        bool signalSender;
+        lock (_outgoingLock)
+        {
+            signalSender = string.IsNullOrEmpty(_latestOutgoingPlayerState) &&
+                string.IsNullOrEmpty(_latestOutgoingWorldInterest) &&
+                string.IsNullOrEmpty(_latestOutgoingTarget);
+            _latestOutgoingTarget = json;
+            signal = _outgoingSignal;
+        }
+        if (signalSender)
+        {
+            signal.Release();
+        }
+    }
+
+    private void ApplySelectedTarget(WorldTargetData target)
+    {
+        _selectedTargetType = target == null ? string.Empty : target.type ?? string.Empty;
+        _selectedTargetID = target == null ? string.Empty : target.id ?? string.Empty;
+        RefreshTargetSelection();
+    }
+
+    private void RefreshTargetSelection()
+    {
+        foreach (GameObject view in _monsterViews.Values)
+        {
+            UpdateTargetSelectionOnView(view);
+        }
+        foreach (GameObject view in _otherPlayerCollisionViews.Values)
+        {
+            UpdateTargetSelectionOnView(view);
+        }
+        foreach (GameObject view in _groundItemViews.Values)
+        {
+            UpdateTargetSelectionOnView(view);
+        }
+    }
+
+    private void UpdateTargetSelectionOnView(GameObject view)
+    {
+        if (view == null)
+        {
+            return;
+        }
+        WorldTargetable targetable = view.GetComponent<WorldTargetable>();
+        if (targetable != null)
+        {
+            targetable.SetSelected(
+                targetable.TargetType == _selectedTargetType &&
+                targetable.TargetID == _selectedTargetID &&
+                !string.IsNullOrEmpty(_selectedTargetID));
+        }
     }
 
     public void SendPlayerState(
@@ -1527,7 +1801,8 @@ public sealed class GameServerLoginUI : MonoBehaviour
         lock (_outgoingLock)
         {
             signalSender = string.IsNullOrEmpty(_latestOutgoingPlayerState) &&
-                string.IsNullOrEmpty(_latestOutgoingWorldInterest);
+                string.IsNullOrEmpty(_latestOutgoingWorldInterest) &&
+                string.IsNullOrEmpty(_latestOutgoingTarget);
             _latestOutgoingPlayerState = json;
             signal = _outgoingSignal;
         }
@@ -1557,16 +1832,20 @@ public sealed class GameServerLoginUI : MonoBehaviour
                 {
                     string playerStateJson;
                     string worldInterestJson;
+                    string targetJson;
                     lock (_outgoingLock)
                     {
                         playerStateJson = _latestOutgoingPlayerState;
                         worldInterestJson = _latestOutgoingWorldInterest;
+                        targetJson = _latestOutgoingTarget;
                         _latestOutgoingPlayerState = null;
                         _latestOutgoingWorldInterest = null;
+                        _latestOutgoingTarget = null;
                     }
 
                     if (string.IsNullOrEmpty(playerStateJson) &&
-                        string.IsNullOrEmpty(worldInterestJson))
+                        string.IsNullOrEmpty(worldInterestJson) &&
+                        string.IsNullOrEmpty(targetJson))
                     {
                         break;
                     }
@@ -1578,6 +1857,10 @@ public sealed class GameServerLoginUI : MonoBehaviour
                     if (!string.IsNullOrEmpty(worldInterestJson))
                     {
                         await writer.WriteLineAsync(worldInterestJson).ConfigureAwait(false);
+                    }
+                    if (!string.IsNullOrEmpty(targetJson))
+                    {
+                        await writer.WriteLineAsync(targetJson).ConfigureAwait(false);
                     }
                 }
             }
@@ -1621,6 +1904,7 @@ public sealed class GameServerLoginUI : MonoBehaviour
         {
             _latestOutgoingPlayerState = null;
             _latestOutgoingWorldInterest = null;
+            _latestOutgoingTarget = null;
             signal = _outgoingSignal;
         }
         try { signal.Release(); } catch (SemaphoreFullException) { }
