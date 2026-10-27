@@ -1066,23 +1066,35 @@ public sealed class GameServerLoginUI : MonoBehaviour
 
             view.transform.localScale = Vector3.one * modelSize;
 
-            // The server sends the monster's base/contact position. While it is falling,
-            // preserve the exact server Y; once landed, align the rendered base to this
-            // client's Terrain to avoid a visible hover caused by tiny heightmap differences.
-            float baseY = monster.position.y;
-            bool isFalling = string.Equals(monster.action, "falling", StringComparison.OrdinalIgnoreCase);
-            if (!isFalling && TryGetTerrainSurfaceY(monster.position.x, monster.position.z, out float terrainY))
+            MonsterDeathPresentation deathPresentation = view.GetComponent<MonsterDeathPresentation>();
+            if (deathPresentation == null)
             {
-                baseY = terrainY;
+                deathPresentation = view.AddComponent<MonsterDeathPresentation>();
             }
 
-            view.transform.position = new Vector3(
-                monster.position.x,
-                baseY + modelSize * 0.5f,
-                monster.position.z);
+            // The server sends the monster's base/contact position. While alive and falling,
+            // preserve the exact server Y; once landed, use this client's Terrain surface.
+            // Once dead, let the client-owned roll animation control the corpse position so
+            // periodic snapshots cannot snap the body back to its standing point.
+            if (!deathPresentation.IsDead)
+            {
+                float baseY = monster.position.y;
+                bool isFalling = string.Equals(
+                    monster.action, "falling", StringComparison.OrdinalIgnoreCase);
+                if (!isFalling &&
+                    TryGetTerrainSurfaceY(monster.position.x, monster.position.z, out float terrainY))
+                {
+                    baseY = terrainY;
+                }
 
-            // Rotation always comes from the server. Identity (+Z forward) is the explicit
-            // default for an entity whose server-side rotation is not otherwise set.
+                view.transform.position = new Vector3(
+                    monster.position.x,
+                    baseY + modelSize * 0.5f,
+                    monster.position.z);
+            }
+
+            // Rotation always comes from the server until death begins. Identity (+Z forward)
+            // is the explicit default for an entity without a valid server rotation.
             Quaternion rotation = monster.rotation != null
                 ? new Quaternion(
                     monster.rotation.x, monster.rotation.y,
@@ -1093,14 +1105,6 @@ public sealed class GameServerLoginUI : MonoBehaviour
                 rotation.y * rotation.y +
                 rotation.z * rotation.z +
                 rotation.w * rotation.w;
-            MonsterDeathPresentation deathPresentation = view.GetComponent<MonsterDeathPresentation>();
-            if (deathPresentation == null)
-            {
-                deathPresentation = view.AddComponent<MonsterDeathPresentation>();
-            }
-
-            // While alive, rotation is server-owned. Once the death transition begins,
-            // retain the local roll animation instead of snapping the corpse upright per snapshot.
             if (!deathPresentation.IsDead)
             {
                 view.transform.rotation = rotationMagnitudeSquared > 0.0001f
