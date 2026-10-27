@@ -10,8 +10,8 @@ public sealed class MonsterDeathPresentation : MonoBehaviour
 {
     [SerializeField, Min(0.2f)] private float dogFallDuration = 1f;
     [SerializeField, Min(0.2f)] private float faceChangeDuration = 1f;
-    [SerializeField, Min(0f)] private float corpseFadeDelay = 5f;
-    [SerializeField, Min(0.2f)] private float corpseFadeDuration = 1.5f;
+    [SerializeField, Min(0f)] private float corpseFadeDelay = 6f;
+    [SerializeField, Min(0.2f)] private float corpseFadeDuration = 1f;
 
     private sealed class FadeMaterial
     {
