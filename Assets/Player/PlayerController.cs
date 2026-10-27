@@ -23,6 +23,7 @@ public class PlayerController : MonoBehaviour
     private WorldTargetable _hoveredWorldTarget;
     [SerializeField, Min(0.001f)] private float visualGroundSmoothingTime = 0.075f;
     private Transform _playerVisualTransform;
+    private PlayerCombatVisuals _combatVisuals;
     private float _smoothedVisualWorldY;
     private float _visualWorldYVelocity;
     private bool _hasSmoothedVisualHeight;
@@ -81,6 +82,49 @@ public class PlayerController : MonoBehaviour
         EnsureTerrainCollider();
         SnapCharacterAboveTerrainIfBuried();
         CreateForwardMarker();
+        InitializeCombatVisuals();
+    }
+
+    private void InitializeCombatVisuals()
+    {
+        _combatVisuals = GetComponent<PlayerCombatVisuals>();
+        if (_combatVisuals == null)
+        {
+            _combatVisuals = gameObject.AddComponent<PlayerCombatVisuals>();
+        }
+
+        // Parent equipment to the visible capsule so it follows visual ground smoothing.
+        Transform visualAnchor = _playerVisualTransform != null
+            ? _playerVisualTransform
+            : transform;
+        _combatVisuals.Initialize(visualAnchor);
+    }
+
+    private void TryPlayAttackPreviewFromMouse()
+    {
+        WorldTargetable target = GetWorldTargetUnderMouse();
+        if (target == null ||
+            !System.String.Equals(
+                target.TargetType,
+                "monster",
+                System.StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        if (_combatVisuals != null)
+        {
+            _combatVisuals.PlayAttack();
+        }
+    }
+
+    /// <summary>Starts the local sword swing; future combat logic can call this after an accepted attack.</summary>
+    public void PlayAttackAnimation()
+    {
+        if (_combatVisuals != null)
+        {
+            _combatVisuals.PlayAttack();
+        }
     }
 
     private void ConfigureCharacterCollider()
@@ -576,6 +620,13 @@ public class PlayerController : MonoBehaviour
         }
 
         UpdateHoveredWorldTarget();
+
+        // Right-clicking a monster plays a client-side sword-swing preview only.
+        // Damage and server-authoritative combat will be implemented separately.
+        if (Mouse.current != null && Mouse.current.rightButton.wasPressedThisFrame)
+        {
+            TryPlayAttackPreviewFromMouse();
+        }
 
         // Clicking an entity selects it; clicking the Terrain still issues a move order.
         if (Mouse.current != null && Mouse.current.leftButton.wasPressedThisFrame)
