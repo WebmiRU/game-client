@@ -150,6 +150,8 @@ public sealed class GameServerLoginUI : MonoBehaviour
     private string _lastSnapshotSummary = string.Empty;
     private readonly Dictionary<string, GameObject> _monsterViews =
         new Dictionary<string, GameObject>();
+    private readonly Dictionary<string, string> _monsterTemplateIds =
+        new Dictionary<string, string>();
     private readonly Dictionary<string, Material> _monsterMaterials =
         new Dictionary<string, Material>();
     private readonly Dictionary<string, Texture2D> _monsterTextures =
@@ -782,10 +784,21 @@ public sealed class GameServerLoginUI : MonoBehaviour
             }
 
             visibleMonsterIDs.Add(monster.id);
-            if (!_monsterViews.TryGetValue(monster.id, out GameObject view) || view == null)
+            string templateID = monster.templateId ?? string.Empty;
+            bool hasView = _monsterViews.TryGetValue(monster.id, out GameObject view) &&
+                view != null;
+            bool templateChanged = _monsterTemplateIds.TryGetValue(monster.id, out string oldTemplate) &&
+                oldTemplate != templateID;
+
+            if (!hasView || templateChanged)
             {
-                // ID 1 is a warning-cube enemy; ID 2 is the yellow smiley sphere.
-                PrimitiveType primitiveType = monster.id == "1"
+                if (hasView)
+                {
+                    Destroy(view);
+                }
+
+                // Presentation comes from server-supplied templateId; id identifies this instance.
+                PrimitiveType primitiveType = templateID == "test-cube-enemy"
                     ? PrimitiveType.Cube
                     : PrimitiveType.Sphere;
                 view = GameObject.CreatePrimitive(primitiveType);
@@ -800,7 +813,7 @@ public sealed class GameServerLoginUI : MonoBehaviour
                 Renderer renderer = view.GetComponent<Renderer>();
                 if (renderer != null)
                 {
-                    Material material = GetMonsterMaterial(monster.id);
+                    Material material = GetMonsterMaterial(monster.id, templateID);
                     if (material != null)
                     {
                         renderer.sharedMaterial = material;
@@ -809,6 +822,7 @@ public sealed class GameServerLoginUI : MonoBehaviour
 
                 CreateMonsterNameLabel(view, monster);
                 _monsterViews[monster.id] = view;
+                _monsterTemplateIds[monster.id] = templateID;
             }
 
             if (view.name != monster.name + " (ID " + monster.id + ")")
@@ -816,11 +830,10 @@ public sealed class GameServerLoginUI : MonoBehaviour
                 view.name = monster.name + " (ID " + monster.id + ")";
             }
 
-            float modelSize = monster.id == "2" ? 1.4f : 1.2f;
+            float modelSize = templateID == "test-sphere-enemy" ? 1.4f : 1.2f;
             view.transform.localScale = Vector3.one * modelSize;
 
-            // The server supplies the terrain surface coordinate. Put the primitive's
-            // center half its diameter above the ground so the model rests on the surface.
+            // Server positions are ground-surface positions; center the primitive on that surface.
             view.transform.position = new Vector3(
                 monster.position.x,
                 monster.position.y + modelSize * 0.5f,
@@ -849,6 +862,8 @@ public sealed class GameServerLoginUI : MonoBehaviour
             }
         }
 
+        // The server sends only visible entities. Any view omitted from this snapshot
+        // has left the requested range or is no longer alive, so remove it locally.
         List<string> staleIDs = new List<string>();
         foreach (KeyValuePair<string, GameObject> pair in _monsterViews)
         {
@@ -864,6 +879,7 @@ public sealed class GameServerLoginUI : MonoBehaviour
         foreach (string staleID in staleIDs)
         {
             _monsterViews.Remove(staleID);
+            _monsterTemplateIds.Remove(staleID);
         }
 
         int playerCount = message.players == null ? 0 : message.players.Length;
@@ -879,14 +895,15 @@ public sealed class GameServerLoginUI : MonoBehaviour
         }
     }
 
-    private Material GetMonsterMaterial(string monsterID)
+    private Material GetMonsterMaterial(string monsterID, string templateID)
     {
-        if (_monsterMaterials.TryGetValue(monsterID, out Material existing) && existing != null)
+        string materialKey = monsterID + "|" + templateID;
+        if (_monsterMaterials.TryGetValue(materialKey, out Material existing) && existing != null)
         {
             return existing;
         }
 
-        bool isSmiley = monsterID == "2";
+        bool isSmiley = templateID == "test-sphere-enemy";
         Texture2D texture = isSmiley ? CreateSmileyTexture() : CreateWarningTexture();
         texture.name = isSmiley ? "Enemy2_YellowSmileyTexture" : "Enemy1_WarningTexture";
 
@@ -917,8 +934,8 @@ public sealed class GameServerLoginUI : MonoBehaviour
             material.SetColor("_EmissionColor", new Color(0.35f, 0.28f, 0f));
         }
 
-        _monsterTextures[monsterID] = texture;
-        _monsterMaterials[monsterID] = material;
+        _monsterTextures[materialKey] = texture;
+        _monsterMaterials[materialKey] = material;
         return material;
     }
 
@@ -935,7 +952,6 @@ public sealed class GameServerLoginUI : MonoBehaviour
         {
             for (int x = 0; x < size; x++)
             {
-                // Diagonal charcoal/orange hazard stripes with a thin light border.
                 Color32 color = (((x + y) / 15) % 2 == 0) ? orange : dark;
                 if (x < 4 || x >= size - 4 || y < 4 || y >= size - 4)
                 {
@@ -969,7 +985,6 @@ public sealed class GameServerLoginUI : MonoBehaviour
                 float v = (y + 0.5f) / size;
                 Color32 color = yellow;
 
-                // A soft upper-left glint makes the yellow ball read as glossy.
                 float highlightDistance = (u - 0.25f) * (u - 0.25f) +
                     (v - 0.82f) * (v - 0.82f);
                 if (highlightDistance < 0.0035f)
@@ -986,7 +1001,6 @@ public sealed class GameServerLoginUI : MonoBehaviour
                     color = black;
                 }
 
-                // Draw a simple U-shaped smile in the center of the texture.
                 if (u >= 0.28f && u <= 0.72f)
                 {
                     float t = (u - 0.28f) / 0.44f;
@@ -1013,7 +1027,7 @@ public sealed class GameServerLoginUI : MonoBehaviour
         GameObject labelObject = new GameObject("NameLabel");
         labelObject.transform.SetParent(view.transform, false);
 
-        float modelSize = monster.id == "2" ? 1.4f : 1.2f;
+        float modelSize = monster.templateId == "test-sphere-enemy" ? 1.4f : 1.2f;
         labelObject.transform.localPosition = new Vector3(
             0f, (modelSize * 0.5f + 0.45f) / modelSize, 0f);
         labelObject.transform.localScale = Vector3.one / modelSize;
@@ -1036,11 +1050,25 @@ public sealed class GameServerLoginUI : MonoBehaviour
             return;
         }
 
-        foreach (GameObject view in _monsterViews.Values)
+        foreach (KeyValuePair<string, GameObject> pair in _monsterViews)
         {
+            GameObject view = pair.Value;
             if (view == null)
             {
                 continue;
+            }
+
+            // The smiley is an appearance-only texture; keep it facing the camera.
+            // Server position/action/state remains authoritative and is never changed.
+            if (_monsterTemplateIds.TryGetValue(pair.Key, out string templateID) &&
+                templateID == "test-sphere-enemy")
+            {
+                Vector3 toCamera = currentCamera.transform.position - view.transform.position;
+                toCamera.y = 0f;
+                if (toCamera.sqrMagnitude > 0.0001f)
+                {
+                    view.transform.rotation = Quaternion.LookRotation(toCamera, Vector3.up);
+                }
             }
 
             Transform label = view.transform.Find("NameLabel");
@@ -1067,6 +1095,7 @@ public sealed class GameServerLoginUI : MonoBehaviour
             }
         }
         _monsterViews.Clear();
+        _monsterTemplateIds.Clear();
         _lastSnapshotSummary = string.Empty;
     }
 
