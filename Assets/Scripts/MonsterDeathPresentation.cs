@@ -10,7 +10,7 @@ public sealed class MonsterDeathPresentation : MonoBehaviour
 {
     [SerializeField, Min(0.2f)] private float dogFallDuration = 1f;
     [SerializeField, Min(0.2f)] private float faceChangeDuration = 1f;
-    [SerializeField, Min(0.1f)] private float spawnFadeDuration = 0.15f;
+    [SerializeField, Min(1f)] private float spawnFadeDuration = 1f;
     [SerializeField, Min(0f)] private float corpseFadeDelay = 6f;
     [SerializeField, Min(0.2f)] private float corpseFadeDuration = 1f;
 
@@ -74,7 +74,7 @@ public sealed class MonsterDeathPresentation : MonoBehaviour
         }
 
         _isSpawning = true;
-        // Start the short fade when this client first learns about the new instance.
+        // Start the one-second fade when this client first learns about the new instance.
         // Snapshot delivery may lag behind the server's initial fall by up to one poll interval.
         _spawnStartedAt = Time.time;
         PrepareFadeMaterials();
@@ -89,7 +89,9 @@ public sealed class MonsterDeathPresentation : MonoBehaviour
             return;
         }
 
-        float duration = Mathf.Max(0.1f, spawnFadeDuration);
+        // Older scene instances may serialize the previous 0.15s value. Enforce
+        // at least one full second so the spawn animation is clearly visible.
+        float duration = Mathf.Max(1f, spawnFadeDuration);
         float progress = Mathf.Clamp01((Time.time - _spawnStartedAt) / duration);
         SetFadeAlpha(progress);
         if (progress >= 1f)
