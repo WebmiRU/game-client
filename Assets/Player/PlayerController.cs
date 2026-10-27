@@ -9,6 +9,7 @@ public class PlayerController : MonoBehaviour
     [SerializeField] private CinemachineCamera cinemachineCamera;
     [SerializeField] private float moveSpeed = 5f;
     [SerializeField] private float gravity = -9.81f;
+    [SerializeField] private float rotationSpeed = 720f;
     [SerializeField] private float forwardMarkerLength = 0.65f;
     [SerializeField] private float forwardMarkerRadius = 0.12f;
     [SerializeField] private Color forwardMarkerColor = new Color(1f, 0.25f, 0.05f);
@@ -86,9 +87,21 @@ public class PlayerController : MonoBehaviour
 
         _verticalVelocity += gravity * Time.deltaTime;
 
-        // Vector2.Y is mapped to world-space Z for forward/backward movement.
-        Vector3 movement = new Vector3(_move.x, 0f, _move.y);
-        movement = Vector3.ClampMagnitude(movement, 1f) * moveSpeed;
+        // Map the input to the horizontal world plane.
+        Vector3 horizontalMovement = new Vector3(_move.x, 0f, _move.y);
+        horizontalMovement = Vector3.ClampMagnitude(horizontalMovement, 1f);
+
+        // Face the direction of travel, using the character's local +Z as forward.
+        if (horizontalMovement.sqrMagnitude > 0.001f)
+        {
+            Quaternion targetRotation = Quaternion.LookRotation(horizontalMovement, Vector3.up);
+            transform.rotation = Quaternion.RotateTowards(
+                transform.rotation,
+                targetRotation,
+                rotationSpeed * Time.deltaTime);
+        }
+
+        Vector3 movement = horizontalMovement * moveSpeed;
         movement.y = _verticalVelocity;
 
         characterController.Move(movement * Time.deltaTime);
