@@ -179,7 +179,10 @@ public class PlayerController : MonoBehaviour
     /// Applies the server's spawn surface coordinate and offsets the character root
     /// so the CharacterController feet meet that surface.
     /// </summary>
-    public void SetSpawnSurfacePosition(Vector3 surfacePosition)
+    public void SetSpawnPosition(
+        Vector3 serverPosition,
+        Quaternion serverRotation,
+        bool positionIsCharacterRoot)
     {
         if (characterController == null)
         {
@@ -188,7 +191,7 @@ public class PlayerController : MonoBehaviour
 
         _hasMoveTarget = false;
         _verticalVelocity = 0f;
-        _targetPosition = surfacePosition;
+        _targetPosition = serverPosition;
         _hasSentNetworkState = false;
         _nextNetworkSyncTime = 0f;
         _nextNetworkHeartbeatTime = 0f;
@@ -198,9 +201,11 @@ public class PlayerController : MonoBehaviour
             _moveTargetInstance.SetActive(false);
         }
 
-        Vector3 characterPosition = surfacePosition;
-        if (characterController != null)
+        Vector3 characterPosition = serverPosition;
+        if (!positionIsCharacterRoot && characterController != null)
         {
+            // First-time spawn coordinates describe the ground surface; persisted coordinates
+            // are the exact character root position and must be restored without an offset.
             characterPosition.y += characterController.height * 0.5f -
                 characterController.center.y + 0.05f;
         }
@@ -211,7 +216,7 @@ public class PlayerController : MonoBehaviour
             characterController.enabled = false;
         }
 
-        transform.position = characterPosition;
+        transform.SetPositionAndRotation(characterPosition, serverRotation);
 
         if (wasEnabled)
         {
@@ -220,8 +225,10 @@ public class PlayerController : MonoBehaviour
 
         Physics.SyncTransforms();
         Debug.Log(
-            "PlayerController: spawned from server; surface=" + surfacePosition +
-            ", characterPosition=" + transform.position);
+            "PlayerController: spawned from server; receivedPosition=" + serverPosition +
+            ", positionIsCharacterRoot=" + positionIsCharacterRoot +
+            ", characterPosition=" + transform.position +
+            ", rotation=" + transform.rotation);
     }
 
     private void CreateForwardMarker()
