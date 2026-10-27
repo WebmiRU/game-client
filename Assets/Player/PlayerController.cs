@@ -154,6 +154,11 @@ public class PlayerController : MonoBehaviour
         _nextAttackAttemptTime = Time.time;
         _isInMeleeRange = false;
         Debug.Log("Melee combat started: target=" + target.DisplayName + " (" + target.TargetID + ").");
+
+        // The second click sends the attack command immediately. The server resolves
+        // its own selected target; if the player is too far away, we pursue and retry
+        // once we reach melee distance.
+        TryRequestMeleeAttack(Time.time);
     }
 
     private void CancelMeleeAttack()
@@ -243,31 +248,9 @@ public class PlayerController : MonoBehaviour
                 _nextAttackAttemptTime = now;
             }
 
-            // The client requests each swing; the server validates the target, range and
-            // attack cooldown before confirming it. Animation begins only after acceptance.
-            if (!_attackRequestPending && now >= _nextAttackAttemptTime)
-            {
-                if (_gameServerLogin == null)
-                {
-                    _gameServerLogin = GameServerLoginUI.Instance;
-                }
-
-                float attackInterval = 1f / GetCurrentServerAttackSpeed();
-                int requestId = NextAttackRequestId();
-                if (_gameServerLogin != null &&
-                    _gameServerLogin.RequestAttack(requestId))
-                {
-                    _attackRequestPending = true;
-                    _pendingAttackRequestId = requestId;
-                    _pendingAttackTargetType = _meleeTarget.TargetType;
-                    _pendingAttackTargetID = _meleeTarget.TargetID;
-                    _nextAttackAttemptTime = now + attackInterval;
-                }
-                else
-                {
-                    _nextAttackAttemptTime = now + 0.2f;
-                }
-            }
+            // Request each swing only while in range. The first attack command was
+            // already sent from BeginMeleeAttack on the second target click.
+            TryRequestMeleeAttack(now);
             return;
         }
 
@@ -280,6 +263,35 @@ public class PlayerController : MonoBehaviour
         {
             _moveTargetInstance.transform.SetPositionAndRotation(_targetPosition, Quaternion.identity);
             _moveTargetInstance.SetActive(true);
+        }
+    }
+
+    private void TryRequestMeleeAttack(float now)
+    {
+        if (!_isMeleeCombatActive || _meleeTarget == null ||
+            _attackRequestPending || now < _nextAttackAttemptTime)
+        {
+            return;
+        }
+
+        if (_gameServerLogin == null)
+        {
+            _gameServerLogin = GameServerLoginUI.Instance;
+        }
+
+        float attackInterval = 1f / GetCurrentServerAttackSpeed();
+        int requestId = NextAttackRequestId();
+        if (_gameServerLogin != null && _gameServerLogin.RequestAttack(requestId))
+        {
+            _attackRequestPending = true;
+            _pendingAttackRequestId = requestId;
+            _pendingAttackTargetType = _meleeTarget.TargetType;
+            _pendingAttackTargetID = _meleeTarget.TargetID;
+            _nextAttackAttemptTime = now + attackInterval;
+        }
+        else
+        {
+            _nextAttackAttemptTime = now + 0.2f;
         }
     }
 
