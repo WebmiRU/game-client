@@ -833,6 +833,7 @@ MonoBehaviour:
   minDistance: 2
   maxDistance: 30
   sensitivity: 0.15
+  startupPitch: 45
   minPitch: -20
   maxPitch: 65
 --- !u!1 &1506203052
