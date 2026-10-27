@@ -22,6 +22,7 @@ public class PlayerController : MonoBehaviour
     private GameObject _moveTargetInstance;
 
     private GameServerLoginUI _gameServerLogin;
+    private ThirdPersonCameraController _cameraController;
     private float _nextNetworkSyncTime;
     private float _nextNetworkHeartbeatTime;
     private Vector3 _lastSentNetworkPosition;
@@ -46,6 +47,8 @@ public class PlayerController : MonoBehaviour
         {
             playerCamera = FindFirstObjectByType<Camera>();
         }
+
+        _cameraController = FindFirstObjectByType<ThirdPersonCameraController>();
 
         if (playerCamera == null)
         {
@@ -221,6 +224,18 @@ public class PlayerController : MonoBehaviour
         if (wasEnabled)
         {
             characterController.enabled = true;
+        }
+
+        // The server may restore a different facing direction than the scene default.
+        // Re-align the camera after applying that rotation so it starts behind the player.
+        if (_cameraController == null)
+        {
+            _cameraController = FindFirstObjectByType<ThirdPersonCameraController>();
+        }
+
+        if (_cameraController != null)
+        {
+            _cameraController.ResetBehindTarget();
         }
 
         Physics.SyncTransforms();
