@@ -778,11 +778,11 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ThirdPersonCameraController
   target: {fileID: 1077027056}
-  distance: 5
+  distance: 15
   targetHeight: 1.5
   zoomSpeed: 1
   minDistance: 2
-  maxDistance: 10
+  maxDistance: 30
   sensitivity: 0.15
   minPitch: -20
   maxPitch: 65
