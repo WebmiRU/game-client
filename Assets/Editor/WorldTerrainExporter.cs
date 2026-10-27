@@ -157,6 +157,110 @@ public static class WorldTerrainExporter
         }
     }
 
+    [MenuItem("Tools/Game Client/Export World Directly to Server Data...")]
+    private static void ExportDirectlyToServerDataFromMenu()
+    {
+        Scene scene = SceneManager.GetActiveScene();
+        if (!scene.IsValid() || !scene.isLoaded)
+        {
+            EditorUtility.DisplayDialog("Terrain export", "Нет активной загруженной сцены.", "OK");
+            return;
+        }
+
+        Terrain terrain = null;
+        if (Selection.activeGameObject != null &&
+            Selection.activeGameObject.scene == scene)
+        {
+            terrain = Selection.activeGameObject.GetComponent<Terrain>();
+        }
+
+        if (terrain == null)
+        {
+            foreach (GameObject root in scene.GetRootGameObjects())
+            {
+                terrain = root.GetComponentInChildren<Terrain>(true);
+                if (terrain != null)
+                {
+                    break;
+                }
+            }
+        }
+
+        if (terrain == null || terrain.terrainData == null)
+        {
+            EditorUtility.DisplayDialog(
+                "Terrain export",
+                "В активной сцене не найден Terrain с назначенным TerrainData.",
+                "OK");
+            return;
+        }
+
+        string problem = GetUnsupportedTransformReason(terrain.transform);
+        if (!string.IsNullOrEmpty(problem))
+        {
+            EditorUtility.DisplayDialog(
+                "Terrain cannot be exported",
+                "Для GWM v1 Terrain должен быть без поворота и с положительным масштабом.\n\n" + problem,
+                "OK");
+            return;
+        }
+
+        string projectRoot = Directory.GetParent(Application.dataPath).FullName;
+        string suggestedDirectory = Path.GetFullPath(
+            Path.Combine(projectRoot, "..", "game-server", "data"));
+        if (!Directory.Exists(suggestedDirectory))
+        {
+            suggestedDirectory = projectRoot;
+        }
+
+        string outputDirectory = EditorUtility.OpenFolderPanel(
+            "Выбери папку data репозитория game-server",
+            suggestedDirectory,
+            string.Empty);
+        if (string.IsNullOrWhiteSpace(outputDirectory))
+        {
+            return;
+        }
+
+        bool overwritesMap = File.Exists(Path.Combine(outputDirectory, "manifest.json")) ||
+            File.Exists(Path.Combine(outputDirectory, "terrain.u16"));
+        string confirmation = "Источник: " + terrain.gameObject.name + "\n" +
+            "Heightmap: " + terrain.terrainData.heightmapResolution + " x " +
+            terrain.terrainData.heightmapResolution + "\n\n" +
+            "Целевой каталог:\n" + outputDirectory + "\n\n" +
+            "Будут созданы manifest.json и terrain.u16 из текущего Terrain." +
+            (overwritesMap
+                ? "\n\nСуществующие файлы карты будут перезаписаны."
+                : "\n\nУбедись, что это именно папка data сервера.");
+        if (!EditorUtility.DisplayDialog(
+            "Export current Terrain to server",
+            confirmation,
+            "Export",
+            "Cancel"))
+        {
+            return;
+        }
+
+        try
+        {
+            ExportTerrain(terrain, scene.name, outputDirectory);
+            EditorUtility.DisplayDialog(
+                "Server map exported",
+                "Текущая карта экспортирована в:\n" + outputDirectory +
+                "\n\nПерезапусти game-server, чтобы он загрузил новый heightmap.",
+                "OK");
+        }
+        catch (Exception exception)
+        {
+            Debug.LogException(exception);
+            EditorUtility.DisplayDialog(
+                "Terrain export failed",
+                "Не удалось экспортировать Terrain. Подробности смотри в Console.\n\n" +
+                exception.Message,
+                "OK");
+        }
+    }
+
     private static string GetUnsupportedTransformReason(Transform terrainTransform)
     {
         if (Quaternion.Angle(terrainTransform.rotation, Quaternion.identity) > 0.01f)
