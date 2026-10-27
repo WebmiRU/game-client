@@ -15,6 +15,7 @@ public class PlayerController: MonoBehaviour
 
     private void Update()
     {
-        characterController.Move(_move * Time.deltaTime);
+        Vector3 movement = new Vector3(_move.x, 0f, _move.y);
+        characterController.Move(movement * Time.deltaTime);
     }
 }
