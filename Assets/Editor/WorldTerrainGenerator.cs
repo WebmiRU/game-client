@@ -59,25 +59,17 @@ public static class WorldTerrainGenerator
     [MenuItem("Tools/Game Client/Generate Mountain Ring Terrain")]
     private static void Generate()
     {
-        // Only generate in a scene that actually contains the playable character and orbit camera.
-        // This prevents accidentally rebuilding the small, scenery-only SampleScene.
+        // Work on the active scene only. Camera scripts are deliberately not required:
+        // terrain generation must never depend on which object owns the orbit-camera controller.
         Scene activeScene = SceneManager.GetActiveScene();
         PlayerController player = FindInScene<PlayerController>(activeScene);
-        ThirdPersonCameraController orbitCamera = FindInScene<ThirdPersonCameraController>(activeScene);
-        Camera renderingCamera = FindInScene<Camera>(activeScene);
+        CharacterController characterController = FindInScene<CharacterController>(activeScene);
 
-        if (player == null || orbitCamera == null || renderingCamera == null)
-        {
-            string sceneName = string.IsNullOrEmpty(activeScene.path) ? activeScene.name : activeScene.path;
-            EditorUtility.DisplayDialog(
-                "Неподходящая сцена",
-                "В открытой сцене не найдены все компоненты персонажа и камеры. Ничего не изменено.\n\n" +
-                "Открой Assets/FreeTestCharacterAsuna/ExampleScene+Readme/ExampleScene.unity " +
-                "или сцену, в которой есть PlayerController, ThirdPersonCameraController и Main Camera, " +
-                "и запусти генератор ещё раз.\n\nТекущая сцена: " + sceneName,
-                "OK");
-            return;
-        }
+        // Some setups have the CharacterController on the capsule but no PlayerController yet.
+        // Preserve/reposition that character too, rather than rejecting the whole scene.
+        Transform playerTransform = player != null
+            ? player.transform
+            : characterController != null ? characterController.transform : null;
 
         Terrain terrain = null;
         if (Selection.activeGameObject != null &&
@@ -95,9 +87,23 @@ public static class WorldTerrainGenerator
         {
             EditorUtility.DisplayDialog(
                 "Terrain generator",
-                "В текущей игровой сцене не найден Terrain с назначенным TerrainData. Ничего не изменено.",
+                "В текущей сцене не найден Terrain с назначенным TerrainData. Открой сцену с ландшафтом и повтори команду.",
                 "OK");
             return;
+        }
+
+        if (playerTransform == null)
+        {
+            bool continueWithoutPlayer = EditorUtility.DisplayDialog(
+                "Персонаж не найден",
+                "Не найден ни PlayerController, ни CharacterController. Ландшафт будет создан, но позицию героя генератор не сможет скорректировать. Камера и остальные объекты сцены не изменятся.",
+                "Продолжить",
+                "Отмена");
+
+            if (!continueWithoutPlayer)
+            {
+                return;
+            }
         }
 
         bool confirmed = EditorUtility.DisplayDialog(
@@ -115,7 +121,7 @@ public static class WorldTerrainGenerator
 
         try
         {
-            GenerateFor(terrain, player);
+            GenerateFor(terrain, playerTransform);
         }
         catch (Exception exception)
         {
@@ -163,7 +169,7 @@ public static class WorldTerrainGenerator
         return value.Replace(' ', '_').Replace('+', '_');
     }
 
-    private static void GenerateFor(Terrain terrain, PlayerController player)
+    private static void GenerateFor(Terrain terrain, Transform playerTransform)
     {
         EnsureAssetFolder(OutputFolder);
 
@@ -194,7 +200,9 @@ public static class WorldTerrainGenerator
             }
         }
 
-        Vector2 spawnUv = WorldToTerrainUv(terrain, sourceData, player.transform.position);
+        Vector2 spawnUv = playerTransform != null
+            ? WorldToTerrainUv(terrain, sourceData, playerTransform.position)
+            : new Vector2(0.5f, 0.5f);
 
         Undo.RecordObject(terrain, "Generate mountain ring terrain");
         terrain.terrainData = data;
@@ -220,7 +228,10 @@ public static class WorldTerrainGenerator
         GenerateHeights(data, spawnUv);
         GenerateTextureWeights(data);
         CreateBoundaryWalls(terrain, data);
-        PlacePlayerOnTerrain(player, terrain, data, spawnUv);
+        if (playerTransform != null)
+        {
+            PlacePlayerOnTerrain(playerTransform, terrain, data, spawnUv);
+        }
 
         terrain.drawInstanced = true;
         terrain.heightmapPixelError = 5f;
@@ -228,7 +239,10 @@ public static class WorldTerrainGenerator
         EditorUtility.SetDirty(data);
         EditorUtility.SetDirty(terrain);
         EditorUtility.SetDirty(terrainCollider);
-        EditorUtility.SetDirty(player);
+        if (playerTransform != null)
+        {
+            EditorUtility.SetDirty(playerTransform);
+        }
         AssetDatabase.SaveAssets();
         terrain.Flush();
 
@@ -486,7 +500,7 @@ public static class WorldTerrainGenerator
     }
 
     private static void PlacePlayerOnTerrain(
-        PlayerController player,
+        Transform playerTransform,
         Terrain terrain,
         TerrainData data,
         Vector2 terrainUv)
@@ -494,14 +508,14 @@ public static class WorldTerrainGenerator
         Vector3 terrainPosition = terrain.transform.position;
         Vector3 scale = terrain.transform.lossyScale;
 
-        Vector3 playerPosition = player.transform.position;
+        Vector3 playerPosition = playerTransform.position;
         playerPosition.x = terrainPosition.x + terrainUv.x * data.size.x * Mathf.Abs(scale.x);
         playerPosition.z = terrainPosition.z + terrainUv.y * data.size.z * Mathf.Abs(scale.z);
         playerPosition.y = terrainPosition.y
             + data.GetInterpolatedHeight(terrainUv.x, terrainUv.y) * Mathf.Abs(scale.y)
             + 0.05f;
 
-        CharacterController controller = player.GetComponent<CharacterController>();
+        CharacterController controller = playerTransform.GetComponent<CharacterController>();
         bool controllerWasEnabled = controller != null && controller.enabled;
 
         if (controllerWasEnabled)
@@ -509,7 +523,7 @@ public static class WorldTerrainGenerator
             controller.enabled = false;
         }
 
-        player.transform.position = playerPosition;
+        playerTransform.position = playerPosition;
 
         if (controllerWasEnabled)
         {
