@@ -8,8 +8,9 @@ public sealed class WorldTargetable : MonoBehaviour
 {
     private static readonly Color NormalNameColor = Color.white;
     private static readonly Color HighlightNameColor = new Color(1f, 0.84f, 0.02f);
-    private const float HealthBarWidth = 0.9f;
-    private const float HealthBarHeight = 0.055f;
+    private const float HealthBarWidth = 1.0f;
+    private const float HealthBarHeight = 0.065f;
+    private const float HealthBarDepth = 0.02f;
 
     private static Material healthBarBackgroundMaterial;
     private static Material healthBarFillMaterial;
@@ -99,9 +100,9 @@ public sealed class WorldTargetable : MonoBehaviour
 
         float ratio = maxHealth > 0 ? Mathf.Clamp01((float)health / maxHealth) : 0f;
         float width = HealthBarWidth * ratio;
-        _healthBarFill.localScale = new Vector3(width, HealthBarHeight, 1f);
+        _healthBarFill.localScale = new Vector3(width, HealthBarHeight, 0.008f);
         _healthBarFill.localPosition = new Vector3(
-            -HealthBarWidth * 0.5f + width * 0.5f, 0f, 0.003f);
+            -HealthBarWidth * 0.5f + width * 0.5f, 0f, 0.016f);
         _healthBarRoot.SetActive(true);
     }
 
@@ -135,36 +136,53 @@ public sealed class WorldTargetable : MonoBehaviour
         }
 
         _healthBarRoot = new GameObject("MonsterHealthBar");
-        _healthBarRoot.transform.SetParent(transform, false);
+        Transform anchor = _nameLabel != null ? _nameLabel.transform : transform;
+        _healthBarRoot.transform.SetParent(anchor, false);
+        if (_nameLabel != null)
+        {
+            // NameLabel is already scale-compensated and billboarded. Parent the bar to it
+            // so it always stays directly beneath the text instead of drifting in world space.
+            // TextMesh flips 180 degrees to face the camera, so cancel that flip for the bar
+            // and offset it toward the camera to keep it visible over the monster mesh.
+            _healthBarRoot.transform.localPosition = new Vector3(0f, -0.22f, -0.03f);
+            _healthBarRoot.transform.localRotation = Quaternion.Euler(0f, 180f, 0f);
+            _healthBarRoot.transform.localScale = Vector3.one;
+        }
+        else
+        {
+            Vector3 scale = transform.lossyScale;
+            float scaleX = Mathf.Max(0.0001f, Mathf.Abs(scale.x));
+            float scaleY = Mathf.Max(0.0001f, Mathf.Abs(scale.y));
+            float scaleZ = Mathf.Max(0.0001f, Mathf.Abs(scale.z));
+            _healthBarRoot.transform.localScale = new Vector3(1f / scaleX, 1f / scaleY, 1f / scaleZ);
+        }
 
-        Vector3 scale = transform.lossyScale;
-        float scaleX = Mathf.Max(0.0001f, Mathf.Abs(scale.x));
-        float scaleY = Mathf.Max(0.0001f, Mathf.Abs(scale.y));
-        float scaleZ = Mathf.Max(0.0001f, Mathf.Abs(scale.z));
-        _healthBarRoot.transform.localScale = new Vector3(1f / scaleX, 1f / scaleY, 1f / scaleZ);
-
-        GameObject background = GameObject.CreatePrimitive(PrimitiveType.Quad);
+        GameObject background = GameObject.CreatePrimitive(PrimitiveType.Cube);
         background.name = "HealthBar_Background";
         background.transform.SetParent(_healthBarRoot.transform, false);
         background.transform.localPosition = Vector3.zero;
-        background.transform.localScale = new Vector3(HealthBarWidth, HealthBarHeight, 1f);
+        background.transform.localScale = new Vector3(HealthBarWidth, HealthBarHeight, HealthBarDepth);
         RemoveCollider(background);
         Renderer backgroundRenderer = background.GetComponent<Renderer>();
         if (backgroundRenderer != null)
         {
             backgroundRenderer.sharedMaterial = healthBarBackgroundMaterial;
+            backgroundRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            backgroundRenderer.receiveShadows = false;
         }
 
-        GameObject fill = GameObject.CreatePrimitive(PrimitiveType.Quad);
+        GameObject fill = GameObject.CreatePrimitive(PrimitiveType.Cube);
         fill.name = "HealthBar_Fill";
         fill.transform.SetParent(_healthBarRoot.transform, false);
-        fill.transform.localPosition = new Vector3(-HealthBarWidth * 0.5f, 0f, 0.003f);
-        fill.transform.localScale = new Vector3(HealthBarWidth, HealthBarHeight, 1f);
+        fill.transform.localPosition = new Vector3(-HealthBarWidth * 0.5f, 0f, 0.016f);
+        fill.transform.localScale = new Vector3(HealthBarWidth, HealthBarHeight, 0.008f);
         RemoveCollider(fill);
         Renderer fillRenderer = fill.GetComponent<Renderer>();
         if (fillRenderer != null)
         {
             fillRenderer.sharedMaterial = healthBarFillMaterial;
+            fillRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            fillRenderer.receiveShadows = false;
         }
         _healthBarFill = fill.transform;
         _healthBarRoot.SetActive(_alive);
@@ -234,16 +252,8 @@ public sealed class WorldTargetable : MonoBehaviour
                 Quaternion.Euler(0f, 180f, 0f);
         }
 
-        if (_healthBarRoot != null && _healthBarRoot.activeSelf)
-        {
-            _healthBarRoot.transform.position = _nameLabel.transform.position + Vector3.down * 0.20f;
-            Vector3 barDirection = _cachedCamera.transform.position - _healthBarRoot.transform.position;
-            if (barDirection.sqrMagnitude > 0.0001f)
-            {
-                // Unlike TextMesh, a Quad's front (+Z) faces the camera without the 180-degree flip.
-                _healthBarRoot.transform.rotation = Quaternion.LookRotation(barDirection, Vector3.up);
-            }
-        }
+        // The health bar is parented to the billboarded name label, so it shares the
+        // same camera-facing transform and remains exactly beneath the name.
     }
 
     private void OnDestroy()
