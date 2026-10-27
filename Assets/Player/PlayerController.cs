@@ -421,12 +421,13 @@ public class PlayerController : MonoBehaviour
         float scaleY = Mathf.Abs(transform.lossyScale.y);
         float rootAboveSurface = (characterController.height * 0.5f -
             characterController.center.y) * scaleY + 0.05f;
-        float minimumRootY = serverGroundY;
 
-        if (TryGetTerrainSurfaceY(position, out float localSurfaceY))
-        {
-            minimumRootY = Mathf.Max(minimumRootY, localSurfaceY + rootAboveSurface);
-        }
+        // The server's Y belongs to the last requested X/Z and may arrive after the
+        // player has already moved onto a different slope. Prefer the terrain directly
+        // under the current client position; use server Y only when no local Terrain exists.
+        float minimumRootY = TryGetTerrainSurfaceY(position, out float localSurfaceY)
+            ? localSurfaceY + rootAboveSurface
+            : serverGroundY;
 
         // Ground correction is intentionally one-way: never push a character down
         // through local terrain. Ordinary downward settling remains the controller's job.
