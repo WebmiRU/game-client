@@ -43,9 +43,10 @@ public sealed class PlayerCombatVisuals : MonoBehaviour
         if (!initialized) Initialize(visualAnchor != null ? visualAnchor : transform);
         if (swordPivot == null) return;
         attackElapsed = 0f;
-        // Use most of the server attack interval for a visible wind-up, decisive strike,
-        // brief follow-through, and recovery instead of a tiny snap that is easy to miss.
-        activeAttackDuration = Mathf.Max(0.42f, duration);
+        // Keep every swing inside the server-provided attack cadence. The phases below
+        // scale with this duration, so fast attacks still reach the 90-degree strike before
+        // the next accepted hit starts a new animation.
+        activeAttackDuration = Mathf.Max(0.08f, duration);
         isAttacking = true;
         swordPivot.localPosition = swordRestPosition;
         swordPivot.localRotation = swordRestRotation;
@@ -67,7 +68,7 @@ public sealed class PlayerCombatVisuals : MonoBehaviour
         if (!isAttacking || swordPivot == null) return;
 
         attackElapsed += Time.deltaTime;
-        float progress = Mathf.Clamp01(attackElapsed / Mathf.Max(0.42f, activeAttackDuration));
+        float progress = Mathf.Clamp01(attackElapsed / Mathf.Max(0.08f, activeAttackDuration));
 
         // Three distinct phases make the hit readable: pull the sword back, drive it down
         // through a full 90-degree arc, then recover. At impact the blade lies horizontal.
