@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.IO;
 using System.Net.Sockets;
 using System.Text;
@@ -51,6 +52,59 @@ public sealed class GameServerLoginUI : MonoBehaviour
         public float rotationZ;
         public float rotationW;
         public bool positionIsRoot;
+        public float visibilityRange;
+        public WorldPlayerData[] players;
+        public WorldMonsterData[] monsters;
+        public WorldGroundItemData[] items;
+    }
+
+    [Serializable]
+    private sealed class WorldVector3
+    {
+        public float x;
+        public float y;
+        public float z;
+    }
+
+    [Serializable]
+    private sealed class WorldQuaternion
+    {
+        public float x;
+        public float y;
+        public float z;
+        public float w;
+    }
+
+    [Serializable]
+    private sealed class WorldPlayerData
+    {
+        public string playerId;
+        public WorldVector3 position;
+        public WorldQuaternion rotation;
+    }
+
+    [Serializable]
+    private sealed class WorldMonsterData
+    {
+        public string id;
+        public string templateId;
+        public string name;
+        public WorldVector3 position;
+        public WorldQuaternion rotation;
+        public int health;
+        public int maxHealth;
+        public bool alive;
+        public string aiState;
+    }
+
+    [Serializable]
+    private sealed class WorldGroundItemData
+    {
+        public string id;
+        public string itemTemplate;
+        public string name;
+        public WorldVector3 position;
+        public int quantity;
     }
 
     private sealed class QueuedServerMessage
@@ -72,10 +126,31 @@ public sealed class GameServerLoginUI : MonoBehaviour
         public float rotationW;
     }
 
+    [Serializable]
+    private sealed class WorldInterestRequest
+    {
+        public string type = "world_interest";
+        public float x;
+        public float y;
+        public float z;
+        public float visibilityRange;
+    }
+
     private string _host = "127.0.0.1";
     private readonly string _port = DefaultPort.ToString();
+    [SerializeField, Range(50f, 500f)] private float visibilityRange = 100f;
+    [SerializeField, Min(0.25f)] private float worldInterestUpdateInterval = 1f;
     private string _status = "Ожидание запуска...";
     private string _authenticatedUsername = string.Empty;
+
+    private PlayerController _cachedPlayerController;
+    private float _nextWorldInterestTime;
+    private Vector3 _lastWorldInterestPosition;
+    private bool _hasSentWorldInterest;
+    private string _lastSnapshotSummary = string.Empty;
+    private readonly Dictionary<string, GameObject> _monsterViews =
+        new Dictionary<string, GameObject>();
+    private Material _monsterMaterial;
 
     private TcpClient _client;
     private NetworkStream _stream;
@@ -98,6 +173,7 @@ public sealed class GameServerLoginUI : MonoBehaviour
 
     private readonly object _outgoingLock = new object();
     private string _latestOutgoingPlayerState;
+    private string _latestOutgoingWorldInterest;
     private SemaphoreSlim _outgoingSignal = new SemaphoreSlim(0);
 
     public static GameServerLoginUI Instance { get; private set; }
@@ -150,11 +226,17 @@ public sealed class GameServerLoginUI : MonoBehaviour
         }
 
         ApplyPendingSpawn();
+        UpdateWorldInterest();
     }
 
     private void OnDestroy()
     {
         DisconnectFromServer(false);
+        if (_monsterMaterial != null)
+        {
+            Destroy(_monsterMaterial);
+            _monsterMaterial = null;
+        }
         if (Instance == this)
         {
             Instance = null;
@@ -164,7 +246,7 @@ public sealed class GameServerLoginUI : MonoBehaviour
     private void OnGUI()
     {
         float panelWidth = Mathf.Min(300f, Screen.width - 24f);
-        float panelHeight = _isConnecting ? 92f : (_isConnected && _isAuthenticated ? 104f : 126f);
+        float panelHeight = _isConnecting ? 92f : (_isConnected && _isAuthenticated ? 146f : 126f);
         Rect panelRect = new Rect(
             12f,
             Mathf.Max(12f, Screen.height - panelHeight - 12f),
@@ -179,6 +261,14 @@ public sealed class GameServerLoginUI : MonoBehaviour
         if (_isAuthenticated)
         {
             GUILayout.Label("Вход выполнен: " + _authenticatedUsername);
+            GUILayout.Label("Дальность отрисовки: " + Mathf.RoundToInt(visibilityRange));
+            float adjustedRange = GUILayout.HorizontalSlider(
+                Mathf.Clamp(visibilityRange, 50f, 500f), 50f, 500f);
+            if (Mathf.Abs(adjustedRange - visibilityRange) > 0.1f)
+            {
+                visibilityRange = Mathf.Clamp(adjustedRange, 50f, 500f);
+                _nextWorldInterestTime = 0f;
+            }
         }
 
         if (_isConnecting)
@@ -395,6 +485,7 @@ public sealed class GameServerLoginUI : MonoBehaviour
             lock (_outgoingLock)
             {
                 _latestOutgoingPlayerState = null;
+                _latestOutgoingWorldInterest = null;
                 _outgoingSignal = sendSignal;
             }
             _ = SendQueuedMessagesAsync(writer, sendSignal, operationId);
@@ -517,6 +608,16 @@ public sealed class GameServerLoginUI : MonoBehaviour
                     ", rotation=" + _pendingSpawnRotation);
                 break;
 
+            case "world_snapshot":
+                if (!message.success)
+                {
+                    Debug.LogWarning("GameServer: world interest request rejected; reason=" + message.message);
+                    return;
+                }
+
+                ApplyWorldSnapshot(message);
+                break;
+
             case "player_state_result":
                 if (!message.success)
                 {
@@ -579,9 +680,188 @@ public sealed class GameServerLoginUI : MonoBehaviour
             _pendingSpawnSurfacePosition,
             _pendingSpawnRotation,
             _pendingSpawnPositionIsRoot);
+        _cachedPlayerController = player;
         _hasPendingSpawn = false;
         _hasAppliedSpawn = true;
+        _hasSentWorldInterest = false;
+        _nextWorldInterestTime = 0f;
         _status = "Авторизован; персонаж появился";
+    }
+
+    private void UpdateWorldInterest()
+    {
+        if (!IsReadyForPlayerState)
+        {
+            return;
+        }
+
+        if (_cachedPlayerController == null)
+        {
+            _cachedPlayerController = FindFirstObjectByType<PlayerController>();
+        }
+        if (_cachedPlayerController == null)
+        {
+            return;
+        }
+
+        Vector3 position = _cachedPlayerController.transform.position;
+        float now = Time.unscaledTime;
+        bool movedEnough = !_hasSentWorldInterest ||
+            (position - _lastWorldInterestPosition).sqrMagnitude >= 25f;
+        if (!movedEnough && now < _nextWorldInterestTime)
+        {
+            return;
+        }
+
+        SendWorldInterest(position);
+        _lastWorldInterestPosition = position;
+        _hasSentWorldInterest = true;
+        _nextWorldInterestTime = now + Mathf.Max(0.25f, worldInterestUpdateInterval);
+    }
+
+    private void SendWorldInterest(Vector3 position)
+    {
+        if (!IsReadyForPlayerState || _writer == null)
+        {
+            return;
+        }
+
+        WorldInterestRequest request = new WorldInterestRequest
+        {
+            type = "world_interest",
+            x = position.x,
+            y = position.y,
+            z = position.z,
+            visibilityRange = Mathf.Clamp(visibilityRange, 50f, 500f)
+        };
+        string json = JsonUtility.ToJson(request);
+
+        SemaphoreSlim signal;
+        bool signalSender;
+        lock (_outgoingLock)
+        {
+            signalSender = string.IsNullOrEmpty(_latestOutgoingPlayerState) &&
+                string.IsNullOrEmpty(_latestOutgoingWorldInterest);
+            _latestOutgoingWorldInterest = json;
+            signal = _outgoingSignal;
+        }
+
+        if (signalSender)
+        {
+            signal.Release();
+        }
+    }
+
+    private void ApplyWorldSnapshot(ServerMessage message)
+    {
+        WorldMonsterData[] monsters = message.monsters ?? Array.Empty<WorldMonsterData>();
+        HashSet<string> visibleMonsterIDs = new HashSet<string>();
+
+        foreach (WorldMonsterData monster in monsters)
+        {
+            if (monster == null || string.IsNullOrWhiteSpace(monster.id) ||
+                monster.position == null || !monster.alive)
+            {
+                continue;
+            }
+
+            visibleMonsterIDs.Add(monster.id);
+            if (!_monsterViews.TryGetValue(monster.id, out GameObject view) || view == null)
+            {
+                view = GameObject.CreatePrimitive(PrimitiveType.Capsule);
+                view.name = "ServerMonster_" + monster.id;
+                Collider collider = view.GetComponent<Collider>();
+                if (collider != null)
+                {
+                    Destroy(collider);
+                }
+
+                Renderer renderer = view.GetComponent<Renderer>();
+                if (renderer != null)
+                {
+                    if (_monsterMaterial == null)
+                    {
+                        Shader shader = Shader.Find("Universal Render Pipeline/Lit");
+                        if (shader == null)
+                        {
+                            shader = Shader.Find("Standard");
+                        }
+                        if (shader != null)
+                        {
+                            _monsterMaterial = new Material(shader)
+                            {
+                                color = new Color(0.78f, 0.16f, 0.12f)
+                            };
+                        }
+                    }
+
+                    if (_monsterMaterial != null)
+                    {
+                        renderer.sharedMaterial = _monsterMaterial;
+                    }
+                }
+
+                _monsterViews[monster.id] = view;
+            }
+
+            // Test monster positions are ground-surface coordinates; a Unity capsule's
+            // pivot is at its center, so raise it by one unit to make it stand on the floor.
+            view.transform.position = new Vector3(
+                monster.position.x,
+                monster.position.y + 1f,
+                monster.position.z);
+            if (monster.rotation != null)
+            {
+                Quaternion rotation = new Quaternion(
+                    monster.rotation.x, monster.rotation.y,
+                    monster.rotation.z, monster.rotation.w);
+                view.transform.rotation = rotation.sqrMagnitude > 0.0001f
+                    ? Quaternion.Normalize(rotation)
+                    : Quaternion.identity;
+            }
+        }
+
+        List<string> staleIDs = new List<string>();
+        foreach (KeyValuePair<string, GameObject> pair in _monsterViews)
+        {
+            if (!visibleMonsterIDs.Contains(pair.Key))
+            {
+                if (pair.Value != null)
+                {
+                    Destroy(pair.Value);
+                }
+                staleIDs.Add(pair.Key);
+            }
+        }
+        foreach (string staleID in staleIDs)
+        {
+            _monsterViews.Remove(staleID);
+        }
+
+        int playerCount = message.players == null ? 0 : message.players.Length;
+        int itemCount = message.items == null ? 0 : message.items.Length;
+        string summary = "players=" + playerCount +
+            ", monsters=" + monsters.Length +
+            ", items=" + itemCount +
+            ", range=" + Mathf.RoundToInt(message.visibilityRange);
+        if (summary != _lastSnapshotSummary)
+        {
+            _lastSnapshotSummary = summary;
+            Debug.Log("GameServer: world snapshot received; " + summary);
+        }
+    }
+
+    private void ClearWorldViews()
+    {
+        foreach (GameObject view in _monsterViews.Values)
+        {
+            if (view != null)
+            {
+                Destroy(view);
+            }
+        }
+        _monsterViews.Clear();
+        _lastSnapshotSummary = string.Empty;
     }
 
     public void SendPlayerState(Vector3 position, Quaternion rotation)
@@ -614,7 +894,8 @@ public sealed class GameServerLoginUI : MonoBehaviour
         bool signalSender;
         lock (_outgoingLock)
         {
-            signalSender = string.IsNullOrEmpty(_latestOutgoingPlayerState);
+            signalSender = string.IsNullOrEmpty(_latestOutgoingPlayerState) &&
+                string.IsNullOrEmpty(_latestOutgoingWorldInterest);
             _latestOutgoingPlayerState = json;
             signal = _outgoingSignal;
         }
@@ -642,19 +923,30 @@ public sealed class GameServerLoginUI : MonoBehaviour
 
                 while (operationId == _operationId)
                 {
-                    string json;
+                    string playerStateJson;
+                    string worldInterestJson;
                     lock (_outgoingLock)
                     {
-                        json = _latestOutgoingPlayerState;
+                        playerStateJson = _latestOutgoingPlayerState;
+                        worldInterestJson = _latestOutgoingWorldInterest;
                         _latestOutgoingPlayerState = null;
+                        _latestOutgoingWorldInterest = null;
                     }
 
-                    if (string.IsNullOrEmpty(json))
+                    if (string.IsNullOrEmpty(playerStateJson) &&
+                        string.IsNullOrEmpty(worldInterestJson))
                     {
                         break;
                     }
 
-                    await writer.WriteLineAsync(json).ConfigureAwait(false);
+                    if (!string.IsNullOrEmpty(playerStateJson))
+                    {
+                        await writer.WriteLineAsync(playerStateJson).ConfigureAwait(false);
+                    }
+                    if (!string.IsNullOrEmpty(worldInterestJson))
+                    {
+                        await writer.WriteLineAsync(worldInterestJson).ConfigureAwait(false);
+                    }
                 }
             }
         }
@@ -680,6 +972,9 @@ public sealed class GameServerLoginUI : MonoBehaviour
     {
         ++_operationId;
         CloseConnectionResources();
+        ClearWorldViews();
+        _cachedPlayerController = null;
+        _hasSentWorldInterest = false;
         _isConnecting = false;
         _isConnected = false;
         _isAuthenticating = false;
@@ -693,6 +988,7 @@ public sealed class GameServerLoginUI : MonoBehaviour
         lock (_outgoingLock)
         {
             _latestOutgoingPlayerState = null;
+            _latestOutgoingWorldInterest = null;
             signal = _outgoingSignal;
         }
         try { signal.Release(); } catch (SemaphoreFullException) { }
