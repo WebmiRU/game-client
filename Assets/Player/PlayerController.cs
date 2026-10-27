@@ -28,6 +28,8 @@ public class PlayerController : MonoBehaviour
     private Vector3 _lastSentNetworkPosition;
     private Quaternion _lastSentNetworkRotation;
     private bool _hasSentNetworkState;
+    private bool _lastSentHasMoveTarget;
+    private Vector3 _lastSentMoveTargetPosition;
 
     private const float NetworkStateSyncInterval = 0.1f;
     private const float NetworkStateHeartbeatInterval = 1f;
@@ -127,14 +129,25 @@ public class PlayerController : MonoBehaviour
             return;
         }
 
+        // The built-in Capsule mesh is 1m wide and 2m high at unit scale. The
+        // authoritative CharacterController is 0.5m wide and 2m high. Match the
+        // rendered shell to that collider, including a non-unit/non-uniform root scale.
+        Vector3 rootScale = transform.lossyScale;
+        float scaleX = Mathf.Max(0.0001f, Mathf.Abs(rootScale.x));
+        float scaleY = Mathf.Max(0.0001f, Mathf.Abs(rootScale.y));
+        float scaleZ = Mathf.Max(0.0001f, Mathf.Abs(rootScale.z));
+        Vector3 visualScale = new Vector3(
+            0.5f / scaleX,
+            1f / scaleY,
+            0.5f / scaleZ);
+
         // PlayerController.transform.position is the feet/base point used by the
-        // server and CharacterController. Unity's built-in Capsule mesh is centred
-        // at its own pivot, so render it one collider-centre above that root.
-        // Otherwise the mesh sits mostly underground while ForwardMarker remains
-        // at CharacterController.center and looks like a nose on the forehead.
+        // server and CharacterController. The visible mesh is centred on the collider.
         Transform existingVisual = transform.Find("PlayerVisual");
         if (existingVisual != null)
         {
+            existingVisual.localPosition = characterController.center;
+            existingVisual.localScale = visualScale;
             sourceRenderer.enabled = false;
             return;
         }
@@ -144,7 +157,7 @@ public class PlayerController : MonoBehaviour
         visual.transform.SetParent(transform, false);
         visual.transform.localPosition = characterController.center;
         visual.transform.localRotation = Quaternion.identity;
-        visual.transform.localScale = Vector3.one;
+        visual.transform.localScale = visualScale;
 
         MeshFilter visualFilter = visual.AddComponent<MeshFilter>();
         visualFilter.sharedMesh = sourceFilter.sharedMesh;
@@ -364,7 +377,7 @@ public class PlayerController : MonoBehaviour
     /// active player or monster. Stop the current click order to avoid repeatedly pushing
     /// against a collision while local world-interest data catches up.
     /// </summary>
-    public void ApplyServerCollisionCorrection(Vector3 acceptedPosition, Quaternion acceptedRotation)
+    public void ApplyServerCollisionCorrection(Vector3 acceptedPosition, Quaternion acceptedRotation, bool stopMovement = false)
     {
         if (characterController == null)
         {
@@ -385,10 +398,13 @@ public class PlayerController : MonoBehaviour
         }
 
         _verticalVelocity = 0f;
-        _hasMoveTarget = false;
-        if (_moveTargetInstance != null)
+        if (stopMovement)
         {
-            _moveTargetInstance.SetActive(false);
+            _hasMoveTarget = false;
+            if (_moveTargetInstance != null)
+            {
+                _moveTargetInstance.SetActive(false);
+            }
         }
 
         Physics.SyncTransforms();
@@ -579,19 +595,30 @@ public class PlayerController : MonoBehaviour
 
         Vector3 position = transform.position;
         Quaternion rotation = transform.rotation;
+        bool moveTargetChanged = _lastSentHasMoveTarget != _hasMoveTarget ||
+            (_hasMoveTarget &&
+             (_targetPosition - _lastSentMoveTargetPosition).sqrMagnitude >=
+                NetworkPositionThreshold * NetworkPositionThreshold);
         bool hasMeaningfulChange = !_hasSentNetworkState ||
             (position - _lastSentNetworkPosition).sqrMagnitude >=
                 NetworkPositionThreshold * NetworkPositionThreshold ||
-            Quaternion.Angle(rotation, _lastSentNetworkRotation) >= NetworkRotationThresholdDegrees;
-        bool heartbeatDue = !_hasSentNetworkState || now >= _nextNetworkHeartbeatTime;
+            Quaternion.Angle(rotation, _lastSentNetworkRotation) >= NetworkRotationThresholdDegrees ||
+            moveTargetChanged;
+
+        // While a move order is active, send a heartbeat at the normal bounded sync
+        // interval even if a wall prevents the CharacterController from changing position.
+        // That lets the server apply its retry timeout promptly instead of waiting for a 1s heartbeat.
+        bool heartbeatDue = !_hasSentNetworkState || now >= _nextNetworkHeartbeatTime || _hasMoveTarget;
         if (!hasMeaningfulChange && !heartbeatDue)
         {
             return;
         }
 
-        _gameServerLogin.SendPlayerState(position, rotation);
+        _gameServerLogin.SendPlayerState(position, rotation, _hasMoveTarget, _targetPosition);
         _lastSentNetworkPosition = position;
         _lastSentNetworkRotation = rotation;
+        _lastSentHasMoveTarget = _hasMoveTarget;
+        _lastSentMoveTargetPosition = _targetPosition;
         _hasSentNetworkState = true;
         _nextNetworkHeartbeatTime = now + NetworkStateHeartbeatInterval;
     }
@@ -666,6 +693,8 @@ public class PlayerController : MonoBehaviour
 
         _targetPosition = targetPoint;
         _hasMoveTarget = true;
+        _hasSentNetworkState = false;
+        _nextNetworkSyncTime = 0f;
 
         if (_moveTargetInstance != null)
         {

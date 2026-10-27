@@ -132,6 +132,9 @@ public sealed class GameServerLoginUI : MonoBehaviour
         public float x;
         public float y;
         public float z;
+        public bool hasMoveTarget;
+        public float moveTargetX;
+        public float moveTargetZ;
         public float rotationX;
         public float rotationY;
         public float rotationZ;
@@ -674,7 +677,8 @@ public sealed class GameServerLoginUI : MonoBehaviour
                 {
                     Debug.Log("GameServer: server registered initial player position and rotation.");
                 }
-                else if (message.message == "server_collision_correction")
+                else if (message.message == "server_collision_correction" ||
+                         message.message == "movement_retry_exhausted")
                 {
                     if (_cachedPlayerController == null)
                     {
@@ -695,9 +699,15 @@ public sealed class GameServerLoginUI : MonoBehaviour
                             correctedRotation = correctedRotation.normalized;
                         }
 
+                        bool stopMovement = message.message == "movement_retry_exhausted";
                         _cachedPlayerController.ApplyServerCollisionCorrection(
                             new Vector3(message.x, message.y, message.z),
-                            correctedRotation);
+                            correctedRotation,
+                            stopMovement);
+                        if (stopMovement)
+                        {
+                            Debug.Log("GameServer: movement stopped after the configured no-progress timeout.");
+                        }
                     }
                 }
                 else if (message.message == "server_ground_correction")
@@ -1479,7 +1489,11 @@ public sealed class GameServerLoginUI : MonoBehaviour
         _lastSnapshotSummary = string.Empty;
     }
 
-    public void SendPlayerState(Vector3 position, Quaternion rotation)
+    public void SendPlayerState(
+        Vector3 position,
+        Quaternion rotation,
+        bool hasMoveTarget,
+        Vector3 moveTargetPosition)
     {
         if (!IsReadyForPlayerState)
         {
@@ -1498,6 +1512,9 @@ public sealed class GameServerLoginUI : MonoBehaviour
             x = position.x,
             y = position.y,
             z = position.z,
+            hasMoveTarget = hasMoveTarget,
+            moveTargetX = moveTargetPosition.x,
+            moveTargetZ = moveTargetPosition.z,
             rotationX = rotation.x,
             rotationY = rotation.y,
             rotationZ = rotation.z,
