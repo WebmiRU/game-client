@@ -177,7 +177,9 @@ public class PlayerController : MonoBehaviour
 
         float surfaceY = terrainOrigin.y +
             _terrain.terrainData.GetInterpolatedHeight(normalizedX, normalizedZ) * Mathf.Abs(terrainScale.y);
-        float capsuleBottomY = position.y + characterController.center.y - characterController.height * 0.5f;
+        float scaleY = Mathf.Abs(transform.lossyScale.y);
+        float capsuleBottomY = position.y +
+            (characterController.center.y - characterController.height * 0.5f) * scaleY;
 
         // Do not change a valid spawn. Recover only when the character capsule is already
         // below the actual Terrain surface.
@@ -192,8 +194,9 @@ public class PlayerController : MonoBehaviour
             characterController.enabled = false;
         }
 
-        position.y = surfaceY + characterController.height * 0.5f -
-            characterController.center.y + 0.05f;
+        position.y = surfaceY +
+            (characterController.height * 0.5f - characterController.center.y) * scaleY +
+            0.05f;
         transform.position = position;
 
         if (wasEnabled)
@@ -238,8 +241,9 @@ public class PlayerController : MonoBehaviour
         {
             // First-time spawn coordinates describe the ground surface; persisted coordinates
             // are the exact character root position and must be restored without an offset.
-            characterPosition.y += characterController.height * 0.5f -
-                characterController.center.y + 0.05f;
+            characterPosition.y +=
+                (characterController.height * 0.5f - characterController.center.y) *
+                Mathf.Abs(transform.lossyScale.y) + 0.05f;
         }
 
         bool wasEnabled = characterController != null && characterController.enabled;
