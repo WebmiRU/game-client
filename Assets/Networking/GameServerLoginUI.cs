@@ -54,6 +54,8 @@ public sealed class GameServerLoginUI : MonoBehaviour
         public bool positionIsRoot;
         public float visibilityRange;
         public float attackSpeed;
+        public float retryAfter;
+        public int requestId;
         public WorldPlayerData[] players;
         public WorldMonsterData[] monsters;
         public WorldGroundItemData[] items;
@@ -135,6 +137,15 @@ public sealed class GameServerLoginUI : MonoBehaviour
         public string type = "set_target";
         public string targetType;
         public string targetId;
+    }
+
+    [Serializable]
+    private sealed class AttackRequest
+    {
+        public string type = "attack";
+        public string targetType;
+        public string targetId;
+        public int requestId;
     }
 
     private sealed class QueuedServerMessage
@@ -224,6 +235,7 @@ public sealed class GameServerLoginUI : MonoBehaviour
     private string _latestOutgoingPlayerState;
     private string _latestOutgoingWorldInterest;
     private string _latestOutgoingTarget;
+    private string _latestOutgoingAttack;
     private SemaphoreSlim _outgoingSignal = new SemaphoreSlim(0);
 
     public static GameServerLoginUI Instance { get; private set; }
@@ -763,6 +775,10 @@ public sealed class GameServerLoginUI : MonoBehaviour
                         _cachedPlayerController.ApplyServerGroundCorrection(message.y);
                     }
                 }
+                break;
+
+            case "attack_result":
+                HandleAttackResult(message);
                 break;
 
             case "target_result":
@@ -1708,6 +1724,93 @@ public sealed class GameServerLoginUI : MonoBehaviour
             string.Equals(_selectedTargetID, target.TargetID, StringComparison.Ordinal);
     }
 
+    /// <summary>Queues one server-authoritative melee attack command.</summary>
+    public bool RequestAttack(WorldTargetable target, int requestId)
+    {
+        if (!IsReadyForPlayerState || _writer == null || target == null ||
+            string.IsNullOrWhiteSpace(target.TargetType) ||
+            string.IsNullOrWhiteSpace(target.TargetID))
+        {
+            return false;
+        }
+
+        string json = JsonUtility.ToJson(new AttackRequest
+        {
+            type = "attack",
+            targetType = target.TargetType,
+            targetId = target.TargetID,
+            requestId = requestId
+        });
+
+        SemaphoreSlim signal;
+        bool signalSender;
+        lock (_outgoingLock)
+        {
+            // PlayerController permits only one outstanding request. Never overwrite
+            // an attack command that is still waiting to be written to the TCP stream.
+            if (!string.IsNullOrEmpty(_latestOutgoingAttack))
+            {
+                return false;
+            }
+
+            signalSender = string.IsNullOrEmpty(_latestOutgoingPlayerState) &&
+                string.IsNullOrEmpty(_latestOutgoingWorldInterest) &&
+                string.IsNullOrEmpty(_latestOutgoingTarget) &&
+                string.IsNullOrEmpty(_latestOutgoingAttack);
+            _latestOutgoingAttack = json;
+            signal = _outgoingSignal;
+        }
+
+        if (signalSender)
+        {
+            signal.Release();
+        }
+
+        Debug.Log("GameServer: attack command queued; targetType=" + target.TargetType +
+            ", targetId=" + target.TargetID + ", requestId=" + requestId);
+        return true;
+    }
+
+    private void HandleAttackResult(ServerMessage message)
+    {
+        if (message.attackSpeed > 0f &&
+            !float.IsNaN(message.attackSpeed) &&
+            !float.IsInfinity(message.attackSpeed))
+        {
+            _serverAttackSpeed = Mathf.Clamp(message.attackSpeed, 0.1f, 10f);
+            _hasServerAttackSpeed = true;
+        }
+
+        if (_cachedPlayerController == null)
+        {
+            _cachedPlayerController = FindFirstObjectByType<PlayerController>();
+        }
+
+        if (_cachedPlayerController != null)
+        {
+            _cachedPlayerController.HandleAttackResult(
+                message.requestId,
+                message.target != null ? message.target.type : string.Empty,
+                message.target != null ? message.target.id : string.Empty,
+                message.success,
+                message.message,
+                message.attackSpeed,
+                message.retryAfter);
+        }
+
+        if (message.success)
+        {
+            Debug.Log("GameServer: attack accepted; target=" +
+                (message.target != null ? message.target.type + ":" + message.target.id : "unknown") +
+                ", requestId=" + message.requestId);
+        }
+        else
+        {
+            Debug.LogWarning("GameServer: attack rejected; reason=" + message.message +
+                ", requestId=" + message.requestId);
+        }
+    }
+
     public void SelectTarget(WorldTargetable target)
     {
         if (target == null)
@@ -1863,19 +1966,23 @@ public sealed class GameServerLoginUI : MonoBehaviour
                     string playerStateJson;
                     string worldInterestJson;
                     string targetJson;
+                    string attackJson;
                     lock (_outgoingLock)
                     {
                         playerStateJson = _latestOutgoingPlayerState;
                         worldInterestJson = _latestOutgoingWorldInterest;
                         targetJson = _latestOutgoingTarget;
+                        attackJson = _latestOutgoingAttack;
                         _latestOutgoingPlayerState = null;
                         _latestOutgoingWorldInterest = null;
                         _latestOutgoingTarget = null;
+                        _latestOutgoingAttack = null;
                     }
 
                     if (string.IsNullOrEmpty(playerStateJson) &&
                         string.IsNullOrEmpty(worldInterestJson) &&
-                        string.IsNullOrEmpty(targetJson))
+                        string.IsNullOrEmpty(targetJson) &&
+                        string.IsNullOrEmpty(attackJson))
                     {
                         break;
                     }
@@ -1891,6 +1998,10 @@ public sealed class GameServerLoginUI : MonoBehaviour
                     if (!string.IsNullOrEmpty(targetJson))
                     {
                         await writer.WriteLineAsync(targetJson).ConfigureAwait(false);
+                    }
+                    if (!string.IsNullOrEmpty(attackJson))
+                    {
+                        await writer.WriteLineAsync(attackJson).ConfigureAwait(false);
                     }
                 }
             }
@@ -1937,6 +2048,7 @@ public sealed class GameServerLoginUI : MonoBehaviour
             _latestOutgoingPlayerState = null;
             _latestOutgoingWorldInterest = null;
             _latestOutgoingTarget = null;
+            _latestOutgoingAttack = null;
             signal = _outgoingSignal;
         }
         try { signal.Release(); } catch (SemaphoreFullException) { }
