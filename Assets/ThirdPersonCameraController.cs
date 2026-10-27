@@ -7,13 +7,13 @@ public class ThirdPersonCameraController : MonoBehaviour
     [SerializeField] private Transform target;
 
     [Header("Camera Settings")]
-    [SerializeField] private float distance = 5f;
+    [SerializeField] private float distance = 15f;
     [SerializeField] private float targetHeight = 1.5f;
     
     [Header("Zoom")]
     [SerializeField] private float zoomSpeed = 1f;
     [SerializeField] private float minDistance = 2f;
-    [SerializeField] private float maxDistance = 10f;
+    [SerializeField] private float maxDistance = 30f;
 
     [Header("Mouse Settings")]
     [SerializeField] private float sensitivity = 0.15f;
