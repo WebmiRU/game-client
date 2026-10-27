@@ -700,6 +700,17 @@ public sealed class GameServerLoginUI : MonoBehaviour
                             correctedRotation);
                     }
                 }
+                else if (message.message == "server_ground_correction")
+                {
+                    if (_cachedPlayerController == null)
+                    {
+                        _cachedPlayerController = FindFirstObjectByType<PlayerController>();
+                    }
+                    if (_cachedPlayerController != null)
+                    {
+                        _cachedPlayerController.ApplyServerGroundCorrection(message.y);
+                    }
+                }
                 break;
 
             case "connection_closed":
