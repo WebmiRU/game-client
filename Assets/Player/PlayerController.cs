@@ -1,6 +1,7 @@
 using Unity.Cinemachine;
 using UnityEngine;
 using UnityEngine.InputSystem;
+using UnityEngine.Rendering;
 
 [RequireComponent(typeof(CharacterController))]
 public class PlayerController : MonoBehaviour
@@ -13,12 +14,34 @@ public class PlayerController : MonoBehaviour
     [SerializeField] private float forwardMarkerLength = 0.65f;
     [SerializeField] private float forwardMarkerRadius = 0.12f;
     [SerializeField] private Color forwardMarkerColor = new Color(1f, 0.25f, 0.05f);
+    [SerializeField] private CinemachineBrain cinemachineBrain;
+    private Camera playerCamera;
+
 
     private Vector2 _move;
     private float _verticalVelocity;
+    Vector2 _mousePosition = Mouse.current.position.ReadValue();
+
+    
+    
+    // private Ray ray = playerCamera.ScreenPointToRay(new Vector3(_mousePosition.x, _mousePosition.y, 0f));
 
     private void Awake()
     {
+        if (cinemachineBrain == null)
+        {
+            cinemachineBrain = FindFirstObjectByType<CinemachineBrain>();
+        }
+
+        if (cinemachineBrain != null)
+        {
+            playerCamera = cinemachineBrain.OutputCamera;
+        }
+        else
+        {
+            Debug.LogError("CinemachineBrain не найден!");
+        }
+        
         if (characterController == null)
         {
             characterController = GetComponent<CharacterController>();
