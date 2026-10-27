@@ -54,6 +54,7 @@ public class PlayerController : MonoBehaviour
         }
         
         EnsureTerrainCollider();
+        SnapCharacterAboveTerrainIfBuried();
         CreateForwardMarker();
     }
 
@@ -103,6 +104,63 @@ public class PlayerController : MonoBehaviour
             ", data=" + _terrain.terrainData.name +
             ", collider=" + terrainCollider.enabled +
             ", size=" + _terrain.terrainData.size);
+    }
+
+
+    private void SnapCharacterAboveTerrainIfBuried()
+    {
+        if (_terrain == null || _terrain.terrainData == null || characterController == null)
+        {
+            return;
+        }
+
+        Vector3 terrainOrigin = _terrain.transform.position;
+        Vector3 terrainScale = _terrain.transform.lossyScale;
+        float terrainWidth = _terrain.terrainData.size.x * Mathf.Abs(terrainScale.x);
+        float terrainLength = _terrain.terrainData.size.z * Mathf.Abs(terrainScale.z);
+        if (terrainWidth <= 0f || terrainLength <= 0f)
+        {
+            return;
+        }
+
+        Vector3 position = transform.position;
+        float normalizedX = (position.x - terrainOrigin.x) / terrainWidth;
+        float normalizedZ = (position.z - terrainOrigin.z) / terrainLength;
+        if (normalizedX < 0f || normalizedX > 1f || normalizedZ < 0f || normalizedZ > 1f)
+        {
+            return;
+        }
+
+        float surfaceY = terrainOrigin.y +
+            _terrain.terrainData.GetInterpolatedHeight(normalizedX, normalizedZ) * Mathf.Abs(terrainScale.y);
+        float capsuleBottomY = position.y + characterController.center.y - characterController.height * 0.5f;
+
+        // Do not change a valid spawn. Recover only when the character capsule is already
+        // below the actual Terrain surface.
+        if (capsuleBottomY >= surfaceY + 0.02f)
+        {
+            return;
+        }
+
+        bool wasEnabled = characterController.enabled;
+        if (wasEnabled)
+        {
+            characterController.enabled = false;
+        }
+
+        position.y = surfaceY + characterController.height * 0.5f -
+            characterController.center.y + 0.05f;
+        transform.position = position;
+
+        if (wasEnabled)
+        {
+            characterController.enabled = true;
+        }
+
+        Physics.SyncTransforms();
+        Debug.Log(
+            "PlayerController: character was below Terrain; moved to surface. " +
+            "surfaceY=" + surfaceY + ", newPosition=" + transform.position);
     }
 
     private void CreateForwardMarker()
