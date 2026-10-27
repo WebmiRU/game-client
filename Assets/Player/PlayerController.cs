@@ -221,25 +221,12 @@ public class PlayerController : MonoBehaviour
             return;
         }
 
-        Vector3 terrainOrigin = _terrain.transform.position;
-        Vector3 terrainScale = _terrain.transform.lossyScale;
-        float terrainWidth = _terrain.terrainData.size.x * Mathf.Abs(terrainScale.x);
-        float terrainLength = _terrain.terrainData.size.z * Mathf.Abs(terrainScale.z);
-        if (terrainWidth <= 0f || terrainLength <= 0f)
-        {
-            return;
-        }
-
         Vector3 position = transform.position;
-        float normalizedX = (position.x - terrainOrigin.x) / terrainWidth;
-        float normalizedZ = (position.z - terrainOrigin.z) / terrainLength;
-        if (normalizedX < 0f || normalizedX > 1f || normalizedZ < 0f || normalizedZ > 1f)
+        if (!TryGetTerrainSurfaceY(position, out float surfaceY))
         {
             return;
         }
 
-        float surfaceY = terrainOrigin.y +
-            _terrain.terrainData.GetInterpolatedHeight(normalizedX, normalizedZ) * Mathf.Abs(terrainScale.y);
         float scaleY = Mathf.Abs(transform.lossyScale.y);
         float capsuleBottomY = position.y +
             (characterController.center.y - characterController.height * 0.5f) * scaleY;
@@ -271,6 +258,36 @@ public class PlayerController : MonoBehaviour
         Debug.Log(
             "PlayerController: character was below Terrain; moved to surface. " +
             "surfaceY=" + surfaceY + ", newPosition=" + transform.position);
+    }
+
+    private bool TryGetTerrainSurfaceY(Vector3 position, out float surfaceY)
+    {
+        surfaceY = 0f;
+        if (_terrain == null || _terrain.terrainData == null)
+        {
+            return false;
+        }
+
+        Vector3 terrainOrigin = _terrain.transform.position;
+        Vector3 terrainScale = _terrain.transform.lossyScale;
+        float terrainWidth = _terrain.terrainData.size.x * Mathf.Abs(terrainScale.x);
+        float terrainLength = _terrain.terrainData.size.z * Mathf.Abs(terrainScale.z);
+        if (terrainWidth <= 0f || terrainLength <= 0f)
+        {
+            return false;
+        }
+
+        float normalizedX = (position.x - terrainOrigin.x) / terrainWidth;
+        float normalizedZ = (position.z - terrainOrigin.z) / terrainLength;
+        if (normalizedX < 0f || normalizedX > 1f || normalizedZ < 0f || normalizedZ > 1f)
+        {
+            return false;
+        }
+
+        surfaceY = terrainOrigin.y +
+            _terrain.terrainData.GetInterpolatedHeight(normalizedX, normalizedZ) *
+            Mathf.Abs(terrainScale.y);
+        return true;
     }
 
     /// <summary>
@@ -381,6 +398,66 @@ public class PlayerController : MonoBehaviour
         Debug.Log(
             "PlayerController: applied server collision correction; position=" +
             acceptedPosition + ", rotation=" + acceptedRotation);
+    }
+
+    /// <summary>
+    /// Handles a server Y-only terrain correction without cancelling click-to-move.
+    /// This is used when the server's heightmap grounds a position differently from
+    /// the client's last CharacterController step, or when Terrain changed underneath
+    /// a connected player. Horizontal coordinates and the active move target are kept.
+    /// </summary>
+    public void ApplyServerGroundCorrection(float serverGroundY)
+    {
+        if (characterController == null)
+        {
+            characterController = GetComponent<CharacterController>();
+        }
+        if (characterController == null)
+        {
+            return;
+        }
+
+        Vector3 position = transform.position;
+        float scaleY = Mathf.Abs(transform.lossyScale.y);
+        float rootAboveSurface = (characterController.height * 0.5f -
+            characterController.center.y) * scaleY + 0.05f;
+        float minimumRootY = serverGroundY;
+
+        if (TryGetTerrainSurfaceY(position, out float localSurfaceY))
+        {
+            minimumRootY = Mathf.Max(minimumRootY, localSurfaceY + rootAboveSurface);
+        }
+
+        // Ground correction is intentionally one-way: never push a character down
+        // through local terrain. Ordinary downward settling remains the controller's job.
+        if (position.y >= minimumRootY - 0.02f)
+        {
+            return;
+        }
+
+        bool wasEnabled = characterController.enabled;
+        if (wasEnabled)
+        {
+            characterController.enabled = false;
+        }
+
+        position.y = minimumRootY;
+        transform.position = position;
+
+        if (wasEnabled)
+        {
+            characterController.enabled = true;
+        }
+
+        _verticalVelocity = 0f;
+        Physics.SyncTransforms();
+        _hasSentNetworkState = false;
+        _nextNetworkSyncTime = 0f;
+
+        // Do not clear _hasMoveTarget: a vertical terrain adjustment is not a wall.
+        Debug.Log(
+            "PlayerController: raised player to current ground without cancelling movement; position=" +
+            transform.position);
     }
 
     private void CreateForwardMarker()
