@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.IO;
 using System.Net.Sockets;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using UnityEngine;
 
@@ -53,6 +54,19 @@ public sealed class GameServerLoginUI : MonoBehaviour
         public string json;
     }
 
+    [Serializable]
+    private sealed class PlayerStateRequest
+    {
+        public string type = "player_state";
+        public float x;
+        public float y;
+        public float z;
+        public float rotationX;
+        public float rotationY;
+        public float rotationZ;
+        public float rotationW;
+    }
+
     private string _host = "127.0.0.1";
     private readonly string _port = DefaultPort.ToString();
     private string _status = "Ожидание запуска...";
@@ -72,7 +86,30 @@ public sealed class GameServerLoginUI : MonoBehaviour
     private readonly ConcurrentQueue<QueuedServerMessage> _incomingMessages =
         new ConcurrentQueue<QueuedServerMessage>();
     private bool _hasPendingSpawn;
+    private bool _hasAppliedSpawn;
     private Vector3 _pendingSpawnSurfacePosition;
+
+    private readonly object _outgoingLock = new object();
+    private string _latestOutgoingPlayerState;
+    private SemaphoreSlim _outgoingSignal = new SemaphoreSlim(0);
+
+    public static GameServerLoginUI Instance { get; private set; }
+
+    public bool IsReadyForPlayerState
+    {
+        get { return _isConnected && _isAuthenticated && _hasAppliedSpawn; }
+    }
+
+    private void Awake()
+    {
+        if (Instance != null && Instance != this)
+        {
+            Destroy(gameObject);
+            return;
+        }
+
+        Instance = this;
+    }
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     private static void CreateLoginPanel()
@@ -110,7 +147,11 @@ public sealed class GameServerLoginUI : MonoBehaviour
 
     private void OnDestroy()
     {
-        CloseConnectionResources();
+        DisconnectFromServer(false);
+        if (Instance == this)
+        {
+            Instance = null;
+        }
     }
 
     private void OnGUI()
@@ -332,6 +373,16 @@ public sealed class GameServerLoginUI : MonoBehaviour
             // The server sends the spawn point as the next line after auth_result.
             // Keep reading subsequent server messages without blocking Unity's main thread.
             _ = ReceiveServerMessagesAsync(reader, operationId);
+
+            // Player transforms share one coalescing async writer, so a slow connection
+            // cannot accumulate an unbounded queue of obsolete movement updates.
+            SemaphoreSlim sendSignal = new SemaphoreSlim(0);
+            lock (_outgoingLock)
+            {
+                _latestOutgoingPlayerState = null;
+                _outgoingSignal = sendSignal;
+            }
+            _ = SendQueuedMessagesAsync(writer, sendSignal, operationId);
         }
         catch (Exception exception)
         {
@@ -436,6 +487,19 @@ public sealed class GameServerLoginUI : MonoBehaviour
                 Debug.Log("GameServer: spawn received at " + _pendingSpawnSurfacePosition);
                 break;
 
+            case "player_state_result":
+                if (!message.success)
+                {
+                    _status = "Ошибка синхронизации: " + message.message;
+                    Debug.LogWarning(
+                        "GameServer: rejected player state; reason=" + message.message);
+                }
+                else if (message.message == "state_registered")
+                {
+                    Debug.Log("GameServer: server registered initial player position and rotation.");
+                }
+                break;
+
             case "connection_closed":
                 if (_isConnected)
                 {
@@ -483,7 +547,95 @@ public sealed class GameServerLoginUI : MonoBehaviour
 
         player.SetSpawnSurfacePosition(_pendingSpawnSurfacePosition);
         _hasPendingSpawn = false;
+        _hasAppliedSpawn = true;
         _status = "Авторизован; персонаж появился";
+    }
+
+    public void SendPlayerState(Vector3 position, Quaternion rotation)
+    {
+        if (!IsReadyForPlayerState)
+        {
+            return;
+        }
+
+        StreamWriter writer = _writer;
+        if (writer == null)
+        {
+            return;
+        }
+
+        PlayerStateRequest request = new PlayerStateRequest
+        {
+            type = "player_state",
+            x = position.x,
+            y = position.y,
+            z = position.z,
+            rotationX = rotation.x,
+            rotationY = rotation.y,
+            rotationZ = rotation.z,
+            rotationW = rotation.w
+        };
+        string json = JsonUtility.ToJson(request);
+
+        SemaphoreSlim signal;
+        bool signalSender;
+        lock (_outgoingLock)
+        {
+            signalSender = string.IsNullOrEmpty(_latestOutgoingPlayerState);
+            _latestOutgoingPlayerState = json;
+            signal = _outgoingSignal;
+        }
+
+        if (signalSender)
+        {
+            signal.Release();
+        }
+    }
+
+    private async Task SendQueuedMessagesAsync(
+        StreamWriter writer,
+        SemaphoreSlim signal,
+        int operationId)
+    {
+        try
+        {
+            while (operationId == _operationId)
+            {
+                await signal.WaitAsync().ConfigureAwait(false);
+                if (operationId != _operationId)
+                {
+                    return;
+                }
+
+                while (operationId == _operationId)
+                {
+                    string json;
+                    lock (_outgoingLock)
+                    {
+                        json = _latestOutgoingPlayerState;
+                        _latestOutgoingPlayerState = null;
+                    }
+
+                    if (string.IsNullOrEmpty(json))
+                    {
+                        break;
+                    }
+
+                    await writer.WriteLineAsync(json).ConfigureAwait(false);
+                }
+            }
+        }
+        catch (Exception exception)
+        {
+            if (operationId == _operationId)
+            {
+                QueueIncomingMessage(operationId, JsonUtility.ToJson(new ServerMessage
+                {
+                    type = "transport_error",
+                    message = "Send failed: " + exception.Message
+                }));
+            }
+        }
     }
 
     private void DisconnectFromServer()
@@ -501,7 +653,16 @@ public sealed class GameServerLoginUI : MonoBehaviour
         _isAuthenticated = false;
         _authenticatedUsername = string.Empty;
         _hasPendingSpawn = false;
+        _hasAppliedSpawn = false;
         while (_incomingMessages.TryDequeue(out _)) { }
+
+        SemaphoreSlim signal;
+        lock (_outgoingLock)
+        {
+            _latestOutgoingPlayerState = null;
+            signal = _outgoingSignal;
+        }
+        try { signal.Release(); } catch (SemaphoreFullException) { }
 
         if (updateStatus)
         {
