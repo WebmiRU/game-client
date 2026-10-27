@@ -18,6 +18,7 @@ public sealed class MonsterDeathPresentation : MonoBehaviour
     {
         public Material Material;
         public Color OriginalColor;
+        public int OriginalRenderQueue;
     }
 
     private readonly List<FadeMaterial> _fadeMaterials = new List<FadeMaterial>();
@@ -260,7 +261,8 @@ public sealed class MonsterDeathPresentation : MonoBehaviour
                     _fadeMaterials.Add(new FadeMaterial
                     {
                         Material = material,
-                        OriginalColor = original
+                        OriginalColor = original,
+                        OriginalRenderQueue = material.renderQueue
                     });
                 }
             }
@@ -286,9 +288,8 @@ public sealed class MonsterDeathPresentation : MonoBehaviour
         {
             if (state.Material != null)
             {
-                ConfigureOpaqueMaterial(state.Material);
+                ConfigureOpaqueMaterial(state.Material, state.OriginalRenderQueue);
                 Color opaque = state.OriginalColor;
-                opaque.a = 1f;
                 if (state.Material.HasProperty("_BaseColor"))
                 {
                     state.Material.SetColor("_BaseColor", opaque);
@@ -302,7 +303,7 @@ public sealed class MonsterDeathPresentation : MonoBehaviour
         }
     }
 
-    private static void ConfigureOpaqueMaterial(Material material)
+    private static void ConfigureOpaqueMaterial(Material material, int originalRenderQueue)
     {
         if (material.HasProperty("_Surface"))
         {
@@ -331,7 +332,7 @@ public sealed class MonsterDeathPresentation : MonoBehaviour
             material.DisableKeyword("_ALPHAPREMULTIPLY_ON");
         }
 
-        material.renderQueue = (int)RenderQueue.Geometry;
+        material.renderQueue = originalRenderQueue;
     }
 
     private static void ConfigureTransparentMaterial(Material material)
