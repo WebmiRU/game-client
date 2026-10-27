@@ -1205,6 +1205,16 @@ public sealed class GameServerLoginUI : MonoBehaviour
             return;
         }
 
+        // Combat responses can arrive between world snapshots. Keep the local collision
+        // mode in sync immediately: falling mobs are triggers, while dead visible corpses
+        // remain solid.
+        Collider monsterCollision = view.GetComponent<Collider>();
+        if (monsterCollision != null)
+        {
+            monsterCollision.isTrigger = monster.alive && string.Equals(
+                monster.action, "falling", StringComparison.OrdinalIgnoreCase);
+        }
+
         WorldTargetable targetable = view.GetComponent<WorldTargetable>();
         if (targetable != null)
         {
