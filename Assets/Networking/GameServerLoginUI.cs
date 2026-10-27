@@ -115,6 +115,8 @@ public sealed class GameServerLoginUI : MonoBehaviour
         public int maxHealth;
         public bool alive;
         public float deathElapsedSeconds;
+        public bool spawning;
+        public float spawnElapsedSeconds;
         public string action;
         public string aiState;
     }
@@ -1137,7 +1139,7 @@ public sealed class GameServerLoginUI : MonoBehaviour
             }
 
             deathPresentation.ApplyServerState(
-                monster.alive, templateID, monster.deathElapsedSeconds);
+                monster.alive, templateID, monster.deathElapsedSeconds, monster.spawning);
         }
 
         // The server keeps dead monsters in snapshots during their death animation and
@@ -1204,7 +1206,7 @@ public sealed class GameServerLoginUI : MonoBehaviour
             deathPresentation = view.AddComponent<MonsterDeathPresentation>();
         }
         deathPresentation.ApplyServerState(
-            monster.alive, monster.templateId, monster.deathElapsedSeconds);
+            monster.alive, monster.templateId, monster.deathElapsedSeconds, monster.spawning);
     }
 
     private static float PositiveOrDefault(float value, float fallback)
