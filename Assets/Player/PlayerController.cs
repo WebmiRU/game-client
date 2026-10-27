@@ -14,12 +14,14 @@ public class PlayerController : MonoBehaviour
     [SerializeField] private float forwardMarkerRadius = 0.12f;
     [SerializeField] private Color forwardMarkerColor = new Color(1f, 0.25f, 0.05f);
     [SerializeField] private float clickStopDistance = 0.2f;
+    [SerializeField] private GameObject moveTargetPrefab;
 
     private Camera playerCamera;
     private Vector2 _move;
     private float _verticalVelocity;
     private Vector3 _targetPosition;
     private bool _hasMoveTarget;
+    private GameObject _moveTargetInstance;
 
     private void Awake()
     {
@@ -40,6 +42,19 @@ public class PlayerController : MonoBehaviour
             Debug.LogError("PlayerController: no rendering Camera found. Ensure the scene has a Camera (normally tagged MainCamera).");
         }
 
+        if (moveTargetPrefab != null)
+        {
+            _moveTargetInstance = Instantiate(moveTargetPrefab);
+            _moveTargetInstance.name = "MoveTargetMarker";
+            _moveTargetInstance.SetActive(false);
+        }
+        else
+        {
+            Debug.LogWarning(
+                "MoveTarget prefab не назначен в PlayerController!"
+            );
+        }
+        
         CreateForwardMarker();
     }
 
@@ -113,6 +128,11 @@ public class PlayerController : MonoBehaviour
             if (toTarget.magnitude <= clickStopDistance)
             {
                 _hasMoveTarget = false;
+                
+                if (_moveTargetInstance != null)
+                {
+                    _moveTargetInstance.SetActive(false);
+                }
             }
             else
             {
@@ -138,6 +158,7 @@ public class PlayerController : MonoBehaviour
 
         Vector3 movement = horizontalMovement * moveSpeed;
         movement.y = _verticalVelocity;
+        
 
         characterController.Move(movement * Time.deltaTime);
     }
@@ -198,6 +219,19 @@ public class PlayerController : MonoBehaviour
         _targetPosition = terrainHit.point;
         _hasMoveTarget = true;
 
-        Debug.Log($"Click-to-move target: {_targetPosition} (Terrain: {terrainHit.collider.name})");
+        if (_moveTargetInstance != null)
+        {
+            _moveTargetInstance.transform.SetPositionAndRotation(
+                _targetPosition,
+                Quaternion.identity
+            );
+
+            _moveTargetInstance.SetActive(true);
+        }
+
+        Debug.Log(
+            $"Click-to-move target: {_targetPosition} " +
+            $"(Terrain: {terrainHit.collider.name})"
+        );
     }
 }
