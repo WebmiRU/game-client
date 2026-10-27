@@ -841,8 +841,13 @@ public sealed class GameServerLoginUI : MonoBehaviour
                 Quaternion rotation = new Quaternion(
                     monster.rotation.x, monster.rotation.y,
                     monster.rotation.z, monster.rotation.w);
-                view.transform.rotation = rotation.sqrMagnitude > 0.0001f
-                    ? Quaternion.Normalize(rotation)
+                float rotationMagnitudeSquared =
+                    rotation.x * rotation.x +
+                    rotation.y * rotation.y +
+                    rotation.z * rotation.z +
+                    rotation.w * rotation.w;
+                view.transform.rotation = rotationMagnitudeSquared > 0.0001f
+                    ? rotation.normalized
                     : Quaternion.identity;
             }
 
