@@ -728,6 +728,7 @@ public sealed class GameServerLoginUI : MonoBehaviour
                 break;
 
             case "monster_spawned":
+            case "monster_state":
                 if (message.monster != null)
                 {
                     message.partialSnapshot = true;
