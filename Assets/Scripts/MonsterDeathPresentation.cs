@@ -207,8 +207,14 @@ public sealed class MonsterDeathPresentation : MonoBehaviour
         if (material.HasProperty("_Surface"))
         {
             material.SetFloat("_Surface", 1f);
+            material.SetFloat("_Blend", 0f);
             material.SetFloat("_AlphaClip", 0f);
+            material.SetFloat("_SrcBlend", (float)BlendMode.SrcAlpha);
+            material.SetFloat("_DstBlend", (float)BlendMode.OneMinusSrcAlpha);
+            material.SetFloat("_ZWrite", 0f);
+            material.SetOverrideTag("RenderType", "Transparent");
             material.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
+            material.EnableKeyword("_ALPHABLEND_ON");
             material.DisableKeyword("_ALPHATEST_ON");
         }
 
