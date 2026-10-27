@@ -17,6 +17,7 @@ public class ThirdPersonCameraController : MonoBehaviour
 
     [Header("Mouse Settings")]
     [SerializeField] private float sensitivity = 0.15f;
+    [SerializeField] private float startupPitch = 45f;
     [SerializeField] private float minPitch = -20f;
     [SerializeField] private float maxPitch = 65f;
 
@@ -33,29 +34,22 @@ public class ThirdPersonCameraController : MonoBehaviour
             return;
         }
 
-        // Сохраняем начальное направление камеры.
-        Vector3 pivot = target.position + Vector3.up * targetHeight;
-        Vector3 offset = transform.position - pivot;
+        ResetBehindTarget();
+    }
 
-        if (offset.sqrMagnitude > 0.01f)
+    /// <summary>
+    /// Resets the camera to a position behind the target using its current facing direction.
+    /// Called both at startup and after the server applies the authoritative spawn rotation.
+    /// </summary>
+    public void ResetBehindTarget()
+    {
+        if (target == null)
         {
-            Vector3 direction = offset.normalized;
-
-            _yaw = Mathf.Atan2(
-                -direction.x,
-                -direction.z
-            ) * Mathf.Rad2Deg;
-
-            _pitch = Mathf.Asin(
-                Mathf.Clamp(direction.y, -1f, 1f)
-            ) * Mathf.Rad2Deg;
-
-            _pitch = Mathf.Clamp(
-                _pitch,
-                minPitch,
-                maxPitch
-            );
+            return;
         }
+
+        _yaw = target.eulerAngles.y;
+        _pitch = Mathf.Clamp(startupPitch, minPitch, maxPitch);
     }
 
     private void LateUpdate()
