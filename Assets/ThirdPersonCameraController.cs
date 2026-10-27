@@ -9,6 +9,11 @@ public class ThirdPersonCameraController : MonoBehaviour
     [Header("Camera Settings")]
     [SerializeField] private float distance = 5f;
     [SerializeField] private float targetHeight = 1.5f;
+    
+    [Header("Zoom")]
+    [SerializeField] private float zoomSpeed = 1f;
+    [SerializeField] private float minDistance = 2f;
+    [SerializeField] private float maxDistance = 10f;
 
     [Header("Mouse Settings")]
     [SerializeField] private float sensitivity = 0.15f;
@@ -65,18 +70,40 @@ public class ThirdPersonCameraController : MonoBehaviour
         // Получаем движение мыши только при зажатой ПКМ.
         Mouse mouse = Mouse.current;
 
-        if (mouse != null && mouse.rightButton.isPressed)
+        if (mouse != null)
         {
-            Vector2 mouseDelta = mouse.delta.ReadValue();
+            // Вращение камеры только при зажатой правой кнопке.
+            if (mouse.rightButton.isPressed)
+            {
+                Vector2 mouseDelta = mouse.delta.ReadValue();
 
-            _yaw += mouseDelta.x * sensitivity;
-            _pitch -= mouseDelta.y * sensitivity;
+                _yaw += mouseDelta.x * sensitivity;
+                _pitch -= mouseDelta.y * sensitivity;
 
-            _pitch = Mathf.Clamp(
-                _pitch,
-                minPitch,
-                maxPitch
-            );
+                _pitch = Mathf.Clamp(
+                    _pitch,
+                    minPitch,
+                    maxPitch
+                );
+            }
+
+            // Приближение и отдаление колёсиком мыши.
+            float scroll = mouse.scroll.ReadValue().y;
+
+            // На Windows один шаг колёсика обычно равен 120 единицам.
+            if (Mathf.Abs(scroll) >= 10f)
+            {
+                scroll /= 120f;
+            }
+
+            if (Mathf.Abs(scroll) > 0.001f)
+            {
+                distance = Mathf.Clamp(
+                    distance - scroll * zoomSpeed,
+                    minDistance,
+                    maxDistance
+                );
+            }
         }
 
         // Точка, вокруг которой вращается камера.
