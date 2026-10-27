@@ -6,12 +6,14 @@ using System.Threading.Tasks;
 using UnityEngine;
 
 /// <summary>
-/// Temporary IMGUI login panel for connecting to the Go game server.
-/// It starts automatically when Play Mode starts, so no scene wiring is required.
+/// Automatically connects to the local Go server and logs in with the development
+/// account. A small status panel stays in the lower-left corner while debugging.
 /// </summary>
 public sealed class GameServerLoginUI : MonoBehaviour
 {
     private const int DefaultPort = 7777;
+    private const string AutoLoginUsername = "player1";
+    private const string AutoLoginPassword = "player1";
     private const int ConnectTimeoutMilliseconds = 5000;
     private const int ResponseTimeoutMilliseconds = 10000;
 
@@ -34,10 +36,8 @@ public sealed class GameServerLoginUI : MonoBehaviour
     }
 
     private string _host = "127.0.0.1";
-    private string _port = DefaultPort.ToString();
-    private string _username = "player1";
-    private string _password = string.Empty;
-    private string _status = "Не подключено";
+    private readonly string _port = DefaultPort.ToString();
+    private string _status = "Ожидание запуска...";
     private string _authenticatedUsername = string.Empty;
 
     private TcpClient _client;
@@ -64,6 +64,12 @@ public sealed class GameServerLoginUI : MonoBehaviour
         panel.AddComponent<GameServerLoginUI>();
     }
 
+    private void Start()
+    {
+        // Development mode: connect and authenticate automatically on Play.
+        ConnectToServerAsync();
+    }
+
     private void OnDestroy()
     {
         CloseConnectionResources();
@@ -71,97 +77,59 @@ public sealed class GameServerLoginUI : MonoBehaviour
 
     private void OnGUI()
     {
-        float panelWidth = Mathf.Min(460f, Screen.width - 24f);
-        float panelHeight = _isAuthenticated ? 250f : (_isConnected ? 355f : 390f);
+        float panelWidth = Mathf.Min(300f, Screen.width - 24f);
+        float panelHeight = _isConnecting ? 92f : (_isConnected && _isAuthenticated ? 104f : 126f);
         Rect panelRect = new Rect(
-            (Screen.width - panelWidth) * 0.5f,
-            Mathf.Max(12f, (Screen.height - panelHeight) * 0.5f),
+            12f,
+            Mathf.Max(12f, Screen.height - panelHeight - 12f),
             panelWidth,
             panelHeight);
 
-        GUILayout.BeginArea(panelRect, GUI.skin.window);
+        GUILayout.BeginArea(panelRect, GUI.skin.box);
         GUILayout.BeginVertical();
-        GUILayout.Label("Подключение к Game Server", CenteredTitleStyle());
-        GUILayout.Space(8f);
+        GUILayout.Label("GAME SERVER", TitleStyle());
+        GUILayout.Label(_host + ":" + _port + "  |  " + _status, StatusStyle());
 
-        bool wasEnabled = GUI.enabled;
-        GUI.enabled = wasEnabled && !_isConnecting && !_isConnected;
-
-        GUILayout.BeginHorizontal();
-        GUILayout.Label("IP / хост", GUILayout.Width(90f));
-        _host = GUILayout.TextField(_host);
-        GUILayout.EndHorizontal();
-
-        GUILayout.BeginHorizontal();
-        GUILayout.Label("Порт", GUILayout.Width(90f));
-        _port = GUILayout.TextField(_port);
-        GUILayout.EndHorizontal();
-
-        GUI.enabled = wasEnabled;
-        GUILayout.Space(8f);
-
-        if (!_isConnected)
+        if (_isAuthenticated)
         {
-            if (_isConnecting)
+            GUILayout.Label("Вход выполнен: " + _authenticatedUsername);
+        }
+
+        if (_isConnecting)
+        {
+            GUILayout.Label("Подключение...");
+            if (GUILayout.Button("Отменить", GUILayout.Height(22f)))
             {
-                GUILayout.Label("Устанавливаю TCP-соединение...");
-                if (GUILayout.Button("Отменить подключение", GUILayout.Height(30f)))
-                {
-                    DisconnectFromServer();
-                }
+                DisconnectFromServer();
             }
-            else if (GUILayout.Button("Подключиться", GUILayout.Height(34f)))
+        }
+        else if (!_isConnected)
+        {
+            if (GUILayout.Button("Повторить подключение", GUILayout.Height(24f)))
             {
                 ConnectToServerAsync();
             }
         }
         else if (!_isAuthenticated)
         {
-            GUILayout.Label("TCP-соединение установлено.");
-            GUILayout.Space(5f);
-
-            GUILayout.BeginHorizontal();
-            GUILayout.Label("Логин", GUILayout.Width(90f));
-            _username = GUILayout.TextField(_username);
-            GUILayout.EndHorizontal();
-
-            GUILayout.BeginHorizontal();
-            GUILayout.Label("Пароль", GUILayout.Width(90f));
-            _password = GUILayout.PasswordField(_password, '*');
-            GUILayout.EndHorizontal();
-
-            GUILayout.Space(8f);
-            bool previousEnabled = GUI.enabled;
-            GUI.enabled = previousEnabled && !_isAuthenticating;
             if (_isAuthenticating)
             {
-                GUILayout.Label("Проверяю логин и пароль...");
+                GUILayout.Label("Авторизация...");
             }
-            else if (GUILayout.Button("Авторизоваться", GUILayout.Height(34f)))
+            else if (GUILayout.Button("Повторить авторизацию", GUILayout.Height(24f)))
             {
                 AuthenticateAsync();
             }
-            GUI.enabled = previousEnabled;
-
-            if (GUILayout.Button("Отключиться"))
+            if (GUILayout.Button("Отключиться", GUILayout.Height(22f)))
             {
                 DisconnectFromServer();
             }
         }
-        else
+        else if (GUILayout.Button("Отключиться", GUILayout.Height(22f)))
         {
-            GUILayout.Label("Авторизация успешна", CenteredTitleStyle());
-            GUILayout.Label("Вы вошли как: " + _authenticatedUsername);
-            GUILayout.Space(10f);
-
-            if (GUILayout.Button("Отключиться", GUILayout.Height(34f)))
-            {
-                DisconnectFromServer();
-            }
+            DisconnectFromServer();
         }
 
-        GUILayout.Space(10f);
-        GUILayout.Label("Статус: " + _status, WrappedStatusStyle());
         GUILayout.EndVertical();
         GUILayout.EndArea();
     }
@@ -174,22 +142,11 @@ public sealed class GameServerLoginUI : MonoBehaviour
         }
 
         string host = _host.Trim();
-        if (string.IsNullOrWhiteSpace(host))
-        {
-            SetConnectionError("Укажи IP-адрес или имя сервера.");
-            return;
-        }
-
-        if (!int.TryParse(_port, out int port) || port < 1 || port > 65535)
-        {
-            SetConnectionError("Порт должен быть числом от 1 до 65535.");
-            return;
-        }
+        int port = DefaultPort;
 
         int operationId = ++_operationId;
         _isConnecting = true;
-        _status = "Подключение к " + host + ":" + port + "...";
-
+        _status = "Подключение...";
         TcpClient client = new TcpClient();
         _client = client;
 
@@ -209,10 +166,10 @@ public sealed class GameServerLoginUI : MonoBehaviour
                 }
                 catch
                 {
-                    // Observe the connection task after timing out.
+                    // Observe the task after timing out.
                 }
 
-                throw new TimeoutException("Сервер не ответил за 5 секунд.");
+                throw new TimeoutException("сервер не ответил за 5 секунд");
             }
 
             await connectTask;
@@ -230,8 +187,11 @@ public sealed class GameServerLoginUI : MonoBehaviour
             };
 
             _isConnected = true;
-            _status = "Подключено к " + host + ":" + port;
-            Debug.Log("GameServer: TCP connection established to " + host + ":" + port);
+            _status = "TCP подключён";
+            Debug.Log("GameServer: TCP connected to " + host + ":" + port);
+
+            // Start authentication immediately after a successful TCP connection.
+            AuthenticateAsync();
         }
         catch (Exception exception)
         {
@@ -240,7 +200,7 @@ public sealed class GameServerLoginUI : MonoBehaviour
                 CloseConnectionResources();
                 _isConnected = false;
                 _isAuthenticated = false;
-                _status = "Не удалось подключиться: " + exception.Message;
+                _status = "Ошибка подключения: " + exception.Message;
                 Debug.LogError(
                     "GameServer: TCP connection failed to " + host + ":" + port +
                     " (" + exception.GetType().Name + ": " + exception.Message + ")");
@@ -262,31 +222,23 @@ public sealed class GameServerLoginUI : MonoBehaviour
             return;
         }
 
-        string username = _username.Trim();
-        string password = _password;
-        if (string.IsNullOrWhiteSpace(username))
-        {
-            _status = "Введи логин.";
-            return;
-        }
-
         int operationId = _operationId;
         StreamReader reader = _reader;
         StreamWriter writer = _writer;
         _isAuthenticating = true;
-        _status = "Проверяю учётные данные...";
+        _status = "Авторизация...";
 
         try
         {
             AuthRequest request = new AuthRequest
             {
                 type = "auth",
-                username = username,
-                password = password
+                username = AutoLoginUsername,
+                password = AutoLoginPassword
             };
 
-            string json = JsonUtility.ToJson(request);
-            await writer.WriteLineAsync(json);
+            // The serialized request is sent, never written to logs.
+            await writer.WriteLineAsync(JsonUtility.ToJson(request));
 
             Task<string> responseTask = reader.ReadLineAsync();
             Task completed = await Task.WhenAny(
@@ -295,7 +247,7 @@ public sealed class GameServerLoginUI : MonoBehaviour
 
             if (completed != responseTask)
             {
-                throw new TimeoutException("Сервер не прислал ответ на запрос авторизации за 10 секунд.");
+                throw new TimeoutException("сервер не ответил на запрос авторизации за 10 секунд");
             }
 
             string responseLine = await responseTask;
@@ -306,13 +258,13 @@ public sealed class GameServerLoginUI : MonoBehaviour
 
             if (string.IsNullOrEmpty(responseLine))
             {
-                throw new IOException("Сервер закрыл соединение.");
+                throw new IOException("сервер закрыл соединение");
             }
 
             AuthResponse response = JsonUtility.FromJson<AuthResponse>(responseLine);
             if (response == null || response.type != "auth_result")
             {
-                throw new InvalidDataException("Неожиданный ответ сервера на запрос авторизации.");
+                throw new InvalidDataException("неожиданный ответ сервера");
             }
 
             if (!response.success)
@@ -321,21 +273,20 @@ public sealed class GameServerLoginUI : MonoBehaviour
                     ? "invalid_credentials"
                     : response.message;
 
-                _status = "Авторизация не удалась: " + DescribeAuthFailure(reason);
+                _status = "Отказ: " + reason;
                 // Never log the password or the complete request JSON.
                 Debug.LogWarning(
-                    "GameServer: authentication failed; username=" + username +
-                    ", server=" + _host.Trim() + ":" + _port +
+                    "GameServer: authentication failed; username=" + AutoLoginUsername +
+                    ", server=" + _host + ":" + DefaultPort +
                     ", reason=" + reason);
                 return;
             }
 
             _isAuthenticated = true;
             _authenticatedUsername = string.IsNullOrWhiteSpace(response.playerId)
-                ? username
+                ? AutoLoginUsername
                 : response.playerId;
-            _password = string.Empty;
-            _status = "Авторизация успешна. Протокол: " + response.protocolVersion;
+            _status = "Авторизован";
             Debug.Log(
                 "GameServer: authentication succeeded; username=" + _authenticatedUsername +
                 ", protocol=" + response.protocolVersion);
@@ -347,7 +298,7 @@ public sealed class GameServerLoginUI : MonoBehaviour
                 _status = "Ошибка авторизации: " + exception.Message;
                 // Do not include the password or serialized request in logs.
                 Debug.LogError(
-                    "GameServer: authentication exchange failed; username=" + username +
+                    "GameServer: authentication exchange failed; username=" + AutoLoginUsername +
                     " (" + exception.GetType().Name + ": " + exception.Message + ")");
                 DisconnectFromServer(false);
             }
@@ -375,7 +326,6 @@ public sealed class GameServerLoginUI : MonoBehaviour
         _isAuthenticating = false;
         _isAuthenticated = false;
         _authenticatedUsername = string.Empty;
-        _password = string.Empty;
 
         if (updateStatus)
         {
@@ -397,42 +347,21 @@ public sealed class GameServerLoginUI : MonoBehaviour
         _client = null;
     }
 
-    private void SetConnectionError(string message)
-    {
-        _status = message;
-        Debug.LogError("GameServer: " + message);
-    }
-
-    private static string DescribeAuthFailure(string reason)
-    {
-        if (reason == "invalid_credentials")
-        {
-            return "неверный логин или пароль.";
-        }
-
-        if (reason == "already_authenticated")
-        {
-            return "соединение уже авторизовано.";
-        }
-
-        return reason + ".";
-    }
-
-    private static GUIStyle CenteredTitleStyle()
+    private static GUIStyle TitleStyle()
     {
         return new GUIStyle(GUI.skin.label)
         {
-            alignment = TextAnchor.MiddleCenter,
-            fontSize = 16,
-            fontStyle = FontStyle.Bold
+            fontStyle = FontStyle.Bold,
+            fontSize = 12
         };
     }
 
-    private static GUIStyle WrappedStatusStyle()
+    private static GUIStyle StatusStyle()
     {
         return new GUIStyle(GUI.skin.label)
         {
-            wordWrap = true
+            wordWrap = true,
+            fontSize = 11
         };
     }
 }
