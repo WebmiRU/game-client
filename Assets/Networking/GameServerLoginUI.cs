@@ -837,7 +837,11 @@ public sealed class GameServerLoginUI : MonoBehaviour
 
             visibleMonsterIDs.Add(monster.id);
             string templateID = monster.templateId ?? string.Empty;
-            // Both test monsters have two-metre collision bounds and two-metre visuals.
+            // The server owns the collider definition; templateId only selects the visual mesh.
+            string colliderShape = monster.collider != null &&
+                !string.IsNullOrWhiteSpace(monster.collider.shape)
+                    ? monster.collider.shape
+                    : (templateID == "test-cube-enemy" ? "box" : "cylinder");
             float modelSize = 2f;
             bool hasView = _monsterViews.TryGetValue(monster.id, out GameObject view) &&
                 view != null;
@@ -860,32 +864,46 @@ public sealed class GameServerLoginUI : MonoBehaviour
                 view.transform.localScale = Vector3.one * modelSize;
 
                 Collider existingCollider = view.GetComponent<Collider>();
-                if (templateID == "test-cube-enemy")
+                if (colliderShape == "box")
                 {
                     BoxCollider box = existingCollider as BoxCollider;
                     if (box == null)
                     {
                         if (existingCollider != null)
                         {
+                            existingCollider.enabled = false;
                             Destroy(existingCollider);
                         }
                         box = view.AddComponent<BoxCollider>();
                     }
+                    Vector3 worldBoxSize = monster.collider != null && monster.collider.size != null
+                        ? new Vector3(
+                            PositiveOrDefault(monster.collider.size.x, 2f),
+                            PositiveOrDefault(monster.collider.size.y, 2f),
+                            PositiveOrDefault(monster.collider.size.z, 2f))
+                        : Vector3.one * 2f;
                     box.center = Vector3.zero;
-                    box.size = Vector3.one;
+                    box.size = worldBoxSize / modelSize;
                     box.isTrigger = false;
                 }
                 else
                 {
                     if (existingCollider != null)
                     {
+                        existingCollider.enabled = false;
                         Destroy(existingCollider);
                     }
                     CapsuleCollider cylinderProxy = view.AddComponent<CapsuleCollider>();
                     cylinderProxy.direction = 1;
                     cylinderProxy.center = Vector3.zero;
-                    cylinderProxy.radius = 0.5f;
-                    cylinderProxy.height = 1f;
+                    float worldRadius = monster.collider != null
+                        ? PositiveOrDefault(monster.collider.radius, 1f)
+                        : 1f;
+                    float worldHeight = monster.collider != null
+                        ? PositiveOrDefault(monster.collider.height, 2f)
+                        : 2f;
+                    cylinderProxy.radius = worldRadius / modelSize;
+                    cylinderProxy.height = worldHeight / modelSize;
                     cylinderProxy.isTrigger = false;
                 }
 
@@ -994,6 +1012,13 @@ public sealed class GameServerLoginUI : MonoBehaviour
             _lastSnapshotSummary = summary;
             Debug.Log("GameServer: world snapshot received; " + summary);
         }
+    }
+
+    private static float PositiveOrDefault(float value, float fallback)
+    {
+        return value > 0f && !float.IsNaN(value) && !float.IsInfinity(value)
+            ? value
+            : fallback;
     }
 
     private Material GetMonsterMaterial(string monsterID, string templateID)
@@ -1141,6 +1166,7 @@ public sealed class GameServerLoginUI : MonoBehaviour
         Collider collider = dot.GetComponent<Collider>();
         if (collider != null)
         {
+            collider.enabled = false;
             Destroy(collider);
         }
 
@@ -1226,6 +1252,7 @@ public sealed class GameServerLoginUI : MonoBehaviour
         Collider collider = part.GetComponent<Collider>();
         if (collider != null)
         {
+            collider.enabled = false;
             Destroy(collider);
         }
 
