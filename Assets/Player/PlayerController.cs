@@ -90,10 +90,10 @@ public class PlayerController : MonoBehaviour
         float scaleY = Mathf.Max(0.0001f, Mathf.Abs(scale.y));
         float scaleZ = Mathf.Max(0.0001f, Mathf.Abs(scale.z));
 
-        // Keep the world-space collider at height 2 m and diameter 0.5 m even if
+        // Keep the world-space collider at height 2 m and diameter 1 m even if
         // the imported character root uses a non-unit scale. Its bottom is at transform.position.
         characterController.height = 2f / scaleY;
-        characterController.radius = 0.25f / Mathf.Max(scaleX, scaleZ);
+        characterController.radius = 0.5f / Mathf.Max(scaleX, scaleZ);
         characterController.center = new Vector3(0f, 1f / scaleY, 0f);
         characterController.skinWidth = Mathf.Min(0.025f, characterController.radius * 0.1f);
         characterController.minMoveDistance = 0f;
@@ -109,7 +109,7 @@ public class PlayerController : MonoBehaviour
         }
 
         Debug.Log(
-            "PlayerController: collider configured; worldHeight=2, worldDiameter=0.5, " +
+            "PlayerController: collider configured; worldHeight=2, worldDiameter=1, " +
             "localHeight=" + characterController.height +
             ", localRadius=" + characterController.radius +
             ", localCenter=" + characterController.center);
@@ -138,9 +138,9 @@ public class PlayerController : MonoBehaviour
         float scaleY = Mathf.Max(0.0001f, Mathf.Abs(rootScale.y));
         float scaleZ = Mathf.Max(0.0001f, Mathf.Abs(rootScale.z));
         Vector3 visualScale = new Vector3(
-            0.5f / scaleX,
+            1f / scaleX,
             1f / scaleY,
-            0.5f / scaleZ);
+            1f / scaleZ);
 
         // PlayerController.transform.position is the feet/base point used by the
         // server and CharacterController. The visible mesh is centred on the collider.
