@@ -130,9 +130,6 @@ public sealed class GameServerLoginUI : MonoBehaviour
     private sealed class WorldInterestRequest
     {
         public string type = "world_interest";
-        public float x;
-        public float y;
-        public float z;
         public float visibilityRange;
     }
 
@@ -630,6 +627,8 @@ public sealed class GameServerLoginUI : MonoBehaviour
                 if (!message.success)
                 {
                     Debug.LogWarning("GameServer: world interest request rejected; reason=" + message.message);
+                    _hasSentWorldInterest = false;
+                    _nextWorldInterestTime = 0f;
                     return;
                 }
 
@@ -731,13 +730,13 @@ public sealed class GameServerLoginUI : MonoBehaviour
             return;
         }
 
-        SendWorldInterest(position);
+        SendWorldInterest();
         _lastWorldInterestPosition = position;
         _hasSentWorldInterest = true;
         _nextWorldInterestTime = now + Mathf.Max(0.25f, worldInterestUpdateInterval);
     }
 
-    private void SendWorldInterest(Vector3 position)
+    private void SendWorldInterest()
     {
         if (!IsReadyForPlayerState || _writer == null)
         {
@@ -747,9 +746,6 @@ public sealed class GameServerLoginUI : MonoBehaviour
         WorldInterestRequest request = new WorldInterestRequest
         {
             type = "world_interest",
-            x = position.x,
-            y = position.y,
-            z = position.z,
             visibilityRange = Mathf.Clamp(visibilityRange, 50f, 500f)
         };
         string json = JsonUtility.ToJson(request);
