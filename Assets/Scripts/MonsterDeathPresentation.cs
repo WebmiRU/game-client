@@ -46,7 +46,8 @@ public sealed class MonsterDeathPresentation : MonoBehaviour
         bool alive,
         string templateID,
         float deathElapsedSeconds,
-        bool spawning)
+        bool spawning,
+        float spawnElapsedSeconds)
     {
         _templateID = templateID ?? string.Empty;
         if (_isDead)
@@ -62,11 +63,11 @@ public sealed class MonsterDeathPresentation : MonoBehaviour
 
         if (spawning)
         {
-            BeginSpawn();
+            BeginSpawn(spawnElapsedSeconds);
         }
     }
 
-    private void BeginSpawn()
+    private void BeginSpawn(float elapsedAtReceipt)
     {
         if (_isSpawning || _isDead)
         {
@@ -74,9 +75,9 @@ public sealed class MonsterDeathPresentation : MonoBehaviour
         }
 
         _isSpawning = true;
-        // Start the one-second fade when this client first learns about the new instance.
-        // Snapshot delivery may lag behind the server's initial fall by up to one poll interval.
-        _spawnStartedAt = Time.time;
+        // Align the local one-second fade to the server spawn time instead of starting
+        // a new timer when a delayed snapshot happens to arrive.
+        _spawnStartedAt = Time.time - Mathf.Max(0f, elapsedAtReceipt);
         PrepareFadeMaterials();
         SetFadeAlpha(0f);
         UpdateSpawnVisuals();
