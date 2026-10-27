@@ -150,8 +150,10 @@ public sealed class GameServerLoginUI : MonoBehaviour
     [Serializable]
     private sealed class AttackRequest
     {
-        // The server deliberately resolves its current target; clients cannot override it.
+        // The attack order has its own target, independent of the UI selection.
         public string type = "attack";
+        public string targetType;
+        public string targetId;
         public int requestId;
     }
 
@@ -1816,22 +1818,23 @@ public sealed class GameServerLoginUI : MonoBehaviour
             string.Equals(_selectedTargetID, target.TargetID, StringComparison.Ordinal);
     }
 
-    /// <summary>Queues one server-authoritative melee attack command.</summary>
-    /// <summary>Queues an attack against the target currently selected on the server.</summary>
-    public bool RequestAttack(int requestId)
+    /// <summary>Queues one server-authoritative melee attack against the active command target.</summary>
+    public bool RequestAttack(int requestId, string targetType, string targetId)
     {
         if (!IsReadyForPlayerState || _writer == null ||
-            string.IsNullOrWhiteSpace(_selectedTargetType) ||
-            string.IsNullOrWhiteSpace(_selectedTargetID))
+            string.IsNullOrWhiteSpace(targetType) ||
+            string.IsNullOrWhiteSpace(targetId))
         {
             return false;
         }
 
-        // Attack requests contain no target identifier. Selection is owned by the server,
-        // and the server resolves its current target when this command arrives.
+        // The server resolves this reference against live entities and validates range,
+        // cooldown, and damage. Changing the UI selection cannot retarget this command.
         string json = JsonUtility.ToJson(new AttackRequest
         {
             type = "attack",
+            targetType = targetType,
+            targetId = targetId,
             requestId = requestId
         });
 
@@ -1859,7 +1862,7 @@ public sealed class GameServerLoginUI : MonoBehaviour
             signal.Release();
         }
 
-        Debug.Log("GameServer: attack command queued for server-selected target; requestId=" + requestId);
+        Debug.Log("GameServer: attack command queued for " + targetType + ":" + targetId + "; requestId=" + requestId);
         return true;
     }
 
