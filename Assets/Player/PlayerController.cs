@@ -197,6 +197,7 @@ public class PlayerController : MonoBehaviour
         // movement destination running forever.
         if (_meleeTarget == null ||
             !_meleeTarget.gameObject.activeInHierarchy ||
+            !_meleeTarget.IsAlive ||
             (!System.String.Equals(
                 _meleeTarget.TargetType,
                 "monster",
