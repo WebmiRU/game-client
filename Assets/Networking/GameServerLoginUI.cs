@@ -56,6 +56,7 @@ public sealed class GameServerLoginUI : MonoBehaviour
         public float attackSpeed;
         public float retryAfter;
         public int requestId;
+        public WorldMonsterData monster;
         public WorldPlayerData[] players;
         public WorldMonsterData[] monsters;
         public WorldGroundItemData[] items;
@@ -109,6 +110,7 @@ public sealed class GameServerLoginUI : MonoBehaviour
         public int health;
         public int maxHealth;
         public bool alive;
+        public float deathElapsedSeconds;
         public string action;
         public string aiState;
     }
@@ -777,6 +779,7 @@ public sealed class GameServerLoginUI : MonoBehaviour
                 break;
 
             case "attack_result":
+                ApplyMonsterCombatResult(message.monster);
                 HandleAttackResult(message);
                 break;
 
@@ -942,7 +945,7 @@ public sealed class GameServerLoginUI : MonoBehaviour
         foreach (WorldMonsterData monster in monsters)
         {
             if (monster == null || string.IsNullOrWhiteSpace(monster.id) ||
-                monster.position == null || !monster.alive)
+                monster.position == null)
             {
                 continue;
             }
@@ -1076,9 +1079,20 @@ public sealed class GameServerLoginUI : MonoBehaviour
                 rotation.y * rotation.y +
                 rotation.z * rotation.z +
                 rotation.w * rotation.w;
-            view.transform.rotation = rotationMagnitudeSquared > 0.0001f
-                ? rotation.normalized
-                : Quaternion.identity;
+            MonsterDeathPresentation deathPresentation = view.GetComponent<MonsterDeathPresentation>();
+            if (deathPresentation == null)
+            {
+                deathPresentation = view.AddComponent<MonsterDeathPresentation>();
+            }
+
+            // While alive, rotation is server-owned. Once the death transition begins,
+            // retain the local roll animation instead of snapping the corpse upright per snapshot.
+            if (!deathPresentation.IsDead)
+            {
+                view.transform.rotation = rotationMagnitudeSquared > 0.0001f
+                    ? rotation.normalized
+                    : Quaternion.identity;
+            }
 
             Transform labelTransform = view.transform.Find("NameLabel");
             if (labelTransform != null)
@@ -1095,12 +1109,17 @@ public sealed class GameServerLoginUI : MonoBehaviour
                         targetable = view.AddComponent<WorldTargetable>();
                     }
                     targetable.Configure("monster", monster.id, monster.name, textMesh);
+                    targetable.SetHealth(monster.health, monster.maxHealth, monster.alive);
+                    targetable.SetAlive(monster.alive);
                 }
             }
+
+            deathPresentation.ApplyServerState(
+                monster.alive, templateID, monster.deathElapsedSeconds);
         }
 
-        // The server sends only visible entities. Any view omitted from this snapshot
-        // has left the requested range or is no longer alive, so remove it locally.
+        // The server keeps dead monsters in snapshots during their death animation and
+        // corpse fade. An omitted view has left the requested range or its corpse expired.
         List<string> staleIDs = new List<string>();
         foreach (KeyValuePair<string, GameObject> pair in _monsterViews)
         {
@@ -1136,6 +1155,30 @@ public sealed class GameServerLoginUI : MonoBehaviour
             _lastSnapshotSummary = summary;
             Debug.Log("GameServer: world snapshot received; " + summary);
         }
+    }
+
+    private void ApplyMonsterCombatResult(WorldMonsterData monster)
+    {
+        if (monster == null || string.IsNullOrWhiteSpace(monster.id) ||
+            !_monsterViews.TryGetValue(monster.id, out GameObject view) || view == null)
+        {
+            return;
+        }
+
+        WorldTargetable targetable = view.GetComponent<WorldTargetable>();
+        if (targetable != null)
+        {
+            targetable.SetHealth(monster.health, monster.maxHealth, monster.alive);
+            targetable.SetAlive(monster.alive);
+        }
+
+        MonsterDeathPresentation deathPresentation = view.GetComponent<MonsterDeathPresentation>();
+        if (deathPresentation == null)
+        {
+            deathPresentation = view.AddComponent<MonsterDeathPresentation>();
+        }
+        deathPresentation.ApplyServerState(
+            monster.alive, monster.templateId, monster.deathElapsedSeconds);
     }
 
     private static float PositiveOrDefault(float value, float fallback)
