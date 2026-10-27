@@ -53,6 +53,7 @@ public sealed class GameServerLoginUI : MonoBehaviour
         public float rotationW;
         public bool positionIsRoot;
         public float visibilityRange;
+        public float attackSpeed;
         public WorldPlayerData[] players;
         public WorldMonsterData[] monsters;
         public WorldGroundItemData[] items;
@@ -197,6 +198,8 @@ public sealed class GameServerLoginUI : MonoBehaviour
     private string _selectedTargetType = string.Empty;
     private string _selectedTargetID = string.Empty;
     private bool _hasPendingTargetSelection;
+    private float _serverAttackSpeed = 1f;
+    private bool _hasServerAttackSpeed;
 
     private TcpClient _client;
     private NetworkStream _stream;
@@ -229,6 +232,10 @@ public sealed class GameServerLoginUI : MonoBehaviour
     {
         get { return _isConnected && _isAuthenticated && _hasAppliedSpawn; }
     }
+
+    /// <summary>Effective attacks per second last supplied by the game server.</summary>
+    public float ServerAttackSpeed => _serverAttackSpeed;
+    public bool HasServerAttackSpeed => _hasServerAttackSpeed;
 
     private void Awake()
     {
@@ -896,6 +903,21 @@ public sealed class GameServerLoginUI : MonoBehaviour
 
     private void ApplyWorldSnapshot(ServerMessage message)
     {
+        if (message.attackSpeed > 0f &&
+            !float.IsNaN(message.attackSpeed) &&
+            !float.IsInfinity(message.attackSpeed))
+        {
+            float newAttackSpeed = Mathf.Clamp(message.attackSpeed, 0.1f, 10f);
+            if (!_hasServerAttackSpeed || Mathf.Abs(_serverAttackSpeed - newAttackSpeed) > 0.01f)
+            {
+                Debug.Log("GameServer: effective attack speed = " + newAttackSpeed.ToString("0.##") +
+                    " attacks/second.");
+            }
+
+            _serverAttackSpeed = newAttackSpeed;
+            _hasServerAttackSpeed = true;
+        }
+
         ApplyOtherPlayerCollisionViews(message.players);
 
         WorldMonsterData[] monsters = message.monsters ?? Array.Empty<WorldMonsterData>();
@@ -1678,6 +1700,14 @@ public sealed class GameServerLoginUI : MonoBehaviour
         _lastSnapshotSummary = string.Empty;
     }
 
+    public bool IsTargetSelected(WorldTargetable target)
+    {
+        return target != null &&
+            !string.IsNullOrEmpty(_selectedTargetID) &&
+            string.Equals(_selectedTargetType, target.TargetType, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(_selectedTargetID, target.TargetID, StringComparison.Ordinal);
+    }
+
     public void SelectTarget(WorldTargetable target)
     {
         if (target == null)
@@ -1897,6 +1927,8 @@ public sealed class GameServerLoginUI : MonoBehaviour
         _authenticatedUsername = string.Empty;
         _hasPendingSpawn = false;
         _hasAppliedSpawn = false;
+        _serverAttackSpeed = 1f;
+        _hasServerAttackSpeed = false;
         while (_incomingMessages.TryDequeue(out _)) { }
 
         SemaphoreSlim signal;
