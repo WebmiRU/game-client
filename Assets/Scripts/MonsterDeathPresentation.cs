@@ -31,7 +31,6 @@ public sealed class MonsterDeathPresentation : MonoBehaviour
     private float _deathStartedAt;
     private Vector3 _standingPosition;
     private Quaternion _standingRotation;
-    private Collider[] _colliders = System.Array.Empty<Collider>();
     private Renderer[] _renderers = System.Array.Empty<Renderer>();
 
     public bool IsDead => _isDead;
@@ -60,14 +59,10 @@ public sealed class MonsterDeathPresentation : MonoBehaviour
         _standingPosition = transform.position;
         _standingRotation = transform.rotation;
 
-        _colliders = GetComponentsInChildren<Collider>(true);
-        foreach (Collider collider in _colliders)
-        {
-            if (collider != null)
-            {
-                collider.enabled = false;
-            }
-        }
+        // Keep the monster's collision active while its corpse is visible. Disabling every
+        // collider here allowed the player to walk halfway into the dog during the death roll.
+        // The visual roll is only a presentation change; the server-owned entity still blocks
+        // movement until the server removes it at the end of the corpse lifetime.
 
         WorldTargetable targetable = GetComponent<WorldTargetable>();
         if (targetable != null)
