@@ -982,6 +982,10 @@ public sealed class GameServerLoginUI : MonoBehaviour
                 if (hasView)
                 {
                     Destroy(view);
+                    if (_monsterTemplateIds.TryGetValue(monster.id, out string staleTemplate))
+                    {
+                        DestroyMonsterAssets(monster.id, staleTemplate);
+                    }
                 }
 
                 // Presentation comes from server-supplied templateId; id identifies this instance.
@@ -1152,6 +1156,10 @@ public sealed class GameServerLoginUI : MonoBehaviour
         }
         foreach (string staleID in staleIDs)
         {
+            if (_monsterTemplateIds.TryGetValue(staleID, out string staleTemplate))
+            {
+                DestroyMonsterAssets(staleID, staleTemplate);
+            }
             _monsterViews.Remove(staleID);
             _monsterTemplateIds.Remove(staleID);
         }
@@ -1204,6 +1212,28 @@ public sealed class GameServerLoginUI : MonoBehaviour
         return value > 0f && !float.IsNaN(value) && !float.IsInfinity(value)
             ? value
             : fallback;
+    }
+
+    private void DestroyMonsterAssets(string monsterID, string templateID)
+    {
+        string materialKey = monsterID + "|" + templateID;
+        if (_monsterMaterials.TryGetValue(materialKey, out Material material))
+        {
+            if (material != null)
+            {
+                Destroy(material);
+            }
+            _monsterMaterials.Remove(materialKey);
+        }
+
+        if (_monsterTextures.TryGetValue(materialKey, out Texture2D texture))
+        {
+            if (texture != null)
+            {
+                Destroy(texture);
+            }
+            _monsterTextures.Remove(materialKey);
+        }
     }
 
     private Material GetMonsterMaterial(string monsterID, string templateID)
