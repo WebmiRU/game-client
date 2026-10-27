@@ -692,7 +692,7 @@ public sealed class GameServerLoginUI : MonoBehaviour
                         }
                         else
                         {
-                            correctedRotation.Normalize();
+                            correctedRotation = correctedRotation.normalized;
                         }
 
                         _cachedPlayerController.ApplyServerCollisionCorrection(
@@ -1294,7 +1294,7 @@ public sealed class GameServerLoginUI : MonoBehaviour
                     if (rotation.x * rotation.x + rotation.y * rotation.y +
                         rotation.z * rotation.z + rotation.w * rotation.w > 0.0001f)
                     {
-                        rotation.Normalize();
+                        rotation = rotation.normalized;
                         view.transform.rotation = Quaternion.Euler(0f, rotation.eulerAngles.y, 0f);
                     }
                 }
