@@ -30,7 +30,12 @@ public class PlayerController : MonoBehaviour
     private Vector3 _meleeApproachDirection;
     private bool _isInMeleeRange;
     private bool _isMeleeCombatActive;
-    private float _lastMeleeAttackTime = float.NegativeInfinity;
+    private bool _attackRequestPending;
+    private int _attackRequestSequence;
+    private int _pendingAttackRequestId;
+    private string _pendingAttackTargetType = string.Empty;
+    private string _pendingAttackTargetID = string.Empty;
+    private float _nextAttackAttemptTime;
     private float _smoothedVisualWorldY;
     private float _visualWorldYVelocity;
     private bool _hasSmoothedVisualHeight;
@@ -146,7 +151,7 @@ public class PlayerController : MonoBehaviour
             ? fromTargetToPlayer.normalized
             : -transform.forward;
         _isMeleeCombatActive = true;
-        _lastMeleeAttackTime = float.NegativeInfinity;
+        _nextAttackAttemptTime = Time.time;
         _isInMeleeRange = false;
         Debug.Log("Melee combat started: target=" + target.DisplayName + " (" + target.TargetID + ").");
     }
@@ -161,7 +166,7 @@ public class PlayerController : MonoBehaviour
         _meleeTarget = null;
         _isMeleeCombatActive = false;
         _isInMeleeRange = false;
-        _lastMeleeAttackTime = float.NegativeInfinity;
+        _nextAttackAttemptTime = Time.time;
         _hasMoveTarget = false;
 
         if (_moveTargetInstance != null)
@@ -228,21 +233,36 @@ public class PlayerController : MonoBehaviour
                 _moveTargetInstance.SetActive(false);
             }
 
+            float now = Time.time;
             if (justEnteredRange)
             {
-                _lastMeleeAttackTime = float.NegativeInfinity;
+                _nextAttackAttemptTime = now;
             }
 
-            float attacksPerSecond = GetCurrentServerAttackSpeed();
-            float attackInterval = 1f / attacksPerSecond;
-            float now = Time.time;
-            if (now >= _lastMeleeAttackTime + attackInterval)
+            // The client requests each swing; the server validates the target, range and
+            // attack cooldown before confirming it. Animation begins only after acceptance.
+            if (!_attackRequestPending && now >= _nextAttackAttemptTime)
             {
-                float animationDuration = Mathf.Min(
-                    meleeAttackAnimationMaxDuration,
-                    attackInterval * 0.9f);
-                PlayAttackAnimation(animationDuration);
-                _lastMeleeAttackTime = now;
+                if (_gameServerLogin == null)
+                {
+                    _gameServerLogin = GameServerLoginUI.Instance;
+                }
+
+                float attackInterval = 1f / GetCurrentServerAttackSpeed();
+                int requestId = NextAttackRequestId();
+                if (_gameServerLogin != null &&
+                    _gameServerLogin.RequestAttack(_meleeTarget, requestId))
+                {
+                    _attackRequestPending = true;
+                    _pendingAttackRequestId = requestId;
+                    _pendingAttackTargetType = _meleeTarget.TargetType;
+                    _pendingAttackTargetID = _meleeTarget.TargetID;
+                    _nextAttackAttemptTime = now + attackInterval;
+                }
+                else
+                {
+                    _nextAttackAttemptTime = now + 0.2f;
+                }
             }
             return;
         }
@@ -257,6 +277,88 @@ public class PlayerController : MonoBehaviour
             _moveTargetInstance.transform.SetPositionAndRotation(_targetPosition, Quaternion.identity);
             _moveTargetInstance.SetActive(true);
         }
+    }
+
+    private int NextAttackRequestId()
+    {
+        unchecked
+        {
+            _attackRequestSequence++;
+        }
+        if (_attackRequestSequence <= 0)
+        {
+            _attackRequestSequence = 1;
+        }
+        return _attackRequestSequence;
+    }
+
+    /// <summary>Receives the result of the server-authoritative attack command.</summary>
+    public void HandleAttackResult(
+        int requestId,
+        string targetType,
+        string targetId,
+        bool success,
+        string message,
+        float serverAttackSpeed,
+        float retryAfter)
+    {
+        if (!_attackRequestPending || requestId != _pendingAttackRequestId)
+        {
+            // A delayed reply from an attack that was cancelled or superseded must not
+            // animate the currently selected target.
+            Debug.Log("PlayerController: ignored stale attack result; requestId=" + requestId);
+            return;
+        }
+
+        string requestedType = _pendingAttackTargetType;
+        string requestedID = _pendingAttackTargetID;
+        _attackRequestPending = false;
+        _pendingAttackRequestId = 0;
+        _pendingAttackTargetType = string.Empty;
+        _pendingAttackTargetID = string.Empty;
+
+        bool stillAttackingThisTarget = _isMeleeCombatActive &&
+            _meleeTarget != null &&
+            System.String.Equals(_meleeTarget.TargetType, requestedType, System.StringComparison.OrdinalIgnoreCase) &&
+            System.String.Equals(_meleeTarget.TargetID, requestedID, System.StringComparison.Ordinal);
+
+        if (!stillAttackingThisTarget)
+        {
+            return;
+        }
+
+        if (success)
+        {
+            float attacksPerSecond = serverAttackSpeed > 0f &&
+                !float.IsNaN(serverAttackSpeed) && !float.IsInfinity(serverAttackSpeed)
+                    ? Mathf.Clamp(serverAttackSpeed, 0.1f, 10f)
+                    : GetCurrentServerAttackSpeed();
+            float animationDuration = Mathf.Min(
+                meleeAttackAnimationMaxDuration,
+                (1f / attacksPerSecond) * 0.9f);
+            PlayAttackAnimation(animationDuration);
+            Debug.Log("Melee attack confirmed by server: target=" +
+                (string.IsNullOrEmpty(targetType) ? requestedType : targetType) + ":" +
+                (string.IsNullOrEmpty(targetId) ? requestedID : targetId) +
+                ", attacksPerSecond=" + attacksPerSecond.ToString("0.##"));
+            return;
+        }
+
+        if (message == "attack_cooldown")
+        {
+            _nextAttackAttemptTime = Time.time + Mathf.Max(0.05f, retryAfter);
+            return;
+        }
+
+        if (message == "attack_out_of_range")
+        {
+            _isInMeleeRange = false;
+            _nextAttackAttemptTime = Time.time + Mathf.Max(0.05f, retryAfter);
+            return;
+        }
+
+        Debug.LogWarning("Melee attack stopped after server rejection: " + message);
+        CancelMeleeAttack();
     }
 
     private float GetMeleeRange(WorldTargetable target, Vector3 targetToPlayerDirection)
@@ -551,6 +653,10 @@ public class PlayerController : MonoBehaviour
         }
 
         CancelMeleeAttack();
+        _attackRequestPending = false;
+        _pendingAttackRequestId = 0;
+        _pendingAttackTargetType = string.Empty;
+        _pendingAttackTargetID = string.Empty;
         _hasMoveTarget = false;
         _verticalVelocity = 0f;
         _hasSmoothedVisualHeight = false;
