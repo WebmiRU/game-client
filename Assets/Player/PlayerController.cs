@@ -1,7 +1,6 @@
 using Unity.Cinemachine;
 using UnityEngine;
 using UnityEngine.InputSystem;
-using UnityEngine.Rendering;
 
 [RequireComponent(typeof(CharacterController))]
 public class PlayerController : MonoBehaviour
@@ -15,16 +14,11 @@ public class PlayerController : MonoBehaviour
     [SerializeField] private float forwardMarkerRadius = 0.12f;
     [SerializeField] private Color forwardMarkerColor = new Color(1f, 0.25f, 0.05f);
     [SerializeField] private CinemachineBrain cinemachineBrain;
+
     private Camera playerCamera;
-
-
     private Vector2 _move;
     private float _verticalVelocity;
-    Vector2 _mousePosition = Mouse.current.position.ReadValue();
-
-    
-    
-    // private Ray ray = playerCamera.ScreenPointToRay(new Vector3(_mousePosition.x, _mousePosition.y, 0f));
+    private Vector2 _mousePosition;
 
     private void Awake()
     {
@@ -39,9 +33,9 @@ public class PlayerController : MonoBehaviour
         }
         else
         {
-            Debug.LogError("CinemachineBrain не найден!");
+            Debug.LogError("CinemachineBrain не найден! Проверь, что он установлен на реальной камере, выводящей изображение.");
         }
-        
+
         if (characterController == null)
         {
             characterController = GetComponent<CharacterController>();
@@ -52,7 +46,6 @@ public class PlayerController : MonoBehaviour
 
     private void CreateForwardMarker()
     {
-        // The cylinder's local Y axis is rotated onto the character's local Z axis.
         GameObject marker = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
         marker.name = "ForwardMarker";
         marker.transform.SetParent(transform, false);
@@ -69,17 +62,14 @@ public class PlayerController : MonoBehaviour
             ? characterController.center.y
             : 1f;
 
-        // Slightly overlap the capsule so the marker looks attached to its front.
         marker.transform.localPosition = new Vector3(
             0f,
             controllerCenterY,
             controllerRadius + forwardMarkerLength * 0.5f - forwardMarkerRadius * 0.25f);
 
-        // This is a visual marker only; it must not participate in collisions.
         Collider markerCollider = marker.GetComponent<Collider>();
         if (markerCollider != null)
         {
-            markerCollider.enabled = false;
             Destroy(markerCollider);
         }
 
@@ -102,7 +92,6 @@ public class PlayerController : MonoBehaviour
             return;
         }
 
-        // Keep the controller grounded without accumulating downward speed.
         if (characterController.isGrounded && _verticalVelocity < 0f)
         {
             _verticalVelocity = -2f;
@@ -110,11 +99,9 @@ public class PlayerController : MonoBehaviour
 
         _verticalVelocity += gravity * Time.deltaTime;
 
-        // Map the input to the horizontal world plane.
         Vector3 horizontalMovement = new Vector3(_move.x, 0f, _move.y);
         horizontalMovement = Vector3.ClampMagnitude(horizontalMovement, 1f);
 
-        // Face the direction of travel, using the character's local +Z as forward.
         if (horizontalMovement.sqrMagnitude > 0.001f)
         {
             Quaternion targetRotation = Quaternion.LookRotation(horizontalMovement, Vector3.up);
