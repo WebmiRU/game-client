@@ -13,6 +13,7 @@ using UnityEngine.SceneManagement;
 public static class WorldTerrainGenerator
 {
     private const string OutputFolder = "Assets/GeneratedWorld";
+    private const string OriginalTerrainDataPath = "Assets/New Terrain.asset";
     private const string GrassTexturePath = OutputFolder + "/Grass_Procedural.png";
     private const string SoilTexturePath = OutputFolder + "/Soil_Procedural.png";
     private const string RockTexturePath = OutputFolder + "/Rock_Procedural.png";
@@ -173,8 +174,20 @@ public static class WorldTerrainGenerator
     {
         EnsureAssetFolder(OutputFolder);
 
-        // Keep this scene's original dimensions/resolutions even if another scene was generated earlier.
+        // If an earlier generator version assigned a shared/generated TerrainData to the scene,
+        // recover the real source asset first. Otherwise the "small generated map" would be cloned again.
         TerrainData sourceData = terrain.terrainData;
+        string currentDataPath = AssetDatabase.GetAssetPath(sourceData);
+        if (!string.IsNullOrEmpty(currentDataPath) &&
+            currentDataPath.StartsWith(OutputFolder + "/", StringComparison.OrdinalIgnoreCase))
+        {
+            TerrainData originalData = AssetDatabase.LoadAssetAtPath<TerrainData>(OriginalTerrainDataPath);
+            if (originalData != null)
+            {
+                sourceData = originalData;
+            }
+        }
+
         string terrainAssetPath = GetGeneratedTerrainPath(terrain);
         TerrainData data = AssetDatabase.LoadAssetAtPath<TerrainData>(terrainAssetPath);
 
