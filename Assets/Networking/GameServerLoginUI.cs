@@ -1074,6 +1074,18 @@ public sealed class GameServerLoginUI : MonoBehaviour
 
             view.transform.localScale = Vector3.one * modelSize;
 
+            // Falling monsters are triggers on the client so a moving spawn collider
+            // cannot depenetrate or push the CharacterController. The server moves the
+            // monster aside before it reaches the player's space. Landed monsters and
+            // visible corpses keep solid colliders.
+            bool isFalling = monster.alive && string.Equals(
+                monster.action, "falling", StringComparison.OrdinalIgnoreCase);
+            Collider monsterCollision = view.GetComponent<Collider>();
+            if (monsterCollision != null)
+            {
+                monsterCollision.isTrigger = isFalling;
+            }
+
             MonsterDeathPresentation deathPresentation = view.GetComponent<MonsterDeathPresentation>();
             if (deathPresentation == null)
             {
@@ -1087,8 +1099,6 @@ public sealed class GameServerLoginUI : MonoBehaviour
             if (!deathPresentation.IsDead)
             {
                 float baseY = monster.position.y;
-                bool isFalling = string.Equals(
-                    monster.action, "falling", StringComparison.OrdinalIgnoreCase);
                 if (!isFalling &&
                     TryGetTerrainSurfaceY(monster.position.x, monster.position.z, out float terrainY))
                 {
