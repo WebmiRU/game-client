@@ -5,7 +5,7 @@ using UnityEngine;
 public sealed class PlayerCombatVisuals : MonoBehaviour
 {
     [SerializeField, Min(0.05f)] private float attackDuration = 0.38f;
-    [SerializeField, Range(20f, 120f)] private float attackSwingAngle = 86f;
+    [SerializeField, Range(60f, 120f)] private float attackSwingAngle = 90f;
 
     private const float BladeLength = 1f;
     private const float GripLength = 0.20f;
@@ -14,6 +14,7 @@ public sealed class PlayerCombatVisuals : MonoBehaviour
     private Transform visualAnchor;
     private Transform swordPivot;
     private Quaternion swordRestRotation = Quaternion.identity;
+    private Vector3 swordRestPosition;
     private float attackElapsed;
     private float activeAttackDuration;
     private bool isAttacking;
@@ -42,8 +43,11 @@ public sealed class PlayerCombatVisuals : MonoBehaviour
         if (!initialized) Initialize(visualAnchor != null ? visualAnchor : transform);
         if (swordPivot == null) return;
         attackElapsed = 0f;
-        activeAttackDuration = Mathf.Max(0.05f, duration);
+        // Use most of the server attack interval for a visible wind-up, decisive strike,
+        // brief follow-through, and recovery instead of a tiny snap that is easy to miss.
+        activeAttackDuration = Mathf.Max(0.42f, duration);
         isAttacking = true;
+        swordPivot.localPosition = swordRestPosition;
         swordPivot.localRotation = swordRestRotation;
     }
 
@@ -54,6 +58,7 @@ public sealed class PlayerCombatVisuals : MonoBehaviour
         if (swordPivot != null)
         {
             swordPivot.localRotation = swordRestRotation;
+            swordPivot.localPosition = swordRestPosition;
         }
     }
 
@@ -62,19 +67,48 @@ public sealed class PlayerCombatVisuals : MonoBehaviour
         if (!isAttacking || swordPivot == null) return;
 
         attackElapsed += Time.deltaTime;
-        float progress = Mathf.Clamp01(attackElapsed / Mathf.Max(0.05f, activeAttackDuration));
-        const float swingPortion = 0.42f;
-        float amount = progress <= swingPortion
-            ? Mathf.SmoothStep(0f, 1f, progress / swingPortion)
-            : 1f - Mathf.SmoothStep(0f, 1f, (progress - swingPortion) / (1f - swingPortion));
+        float progress = Mathf.Clamp01(attackElapsed / Mathf.Max(0.42f, activeAttackDuration));
 
-        // The upright blade rotates forward around the grip, ending almost horizontal.
+        // Three distinct phases make the hit readable: pull the sword back, drive it down
+        // through a full 90-degree arc, then recover. At impact the blade lies horizontal.
+        const float windUpEnd = 0.18f;
+        const float impactEnd = 0.48f;
+        const float followThroughEnd = 0.60f;
+        const float windUpAngle = -18f;
+        float angle;
+        if (progress < windUpEnd)
+        {
+            angle = Mathf.Lerp(0f, windUpAngle, Mathf.SmoothStep(0f, 1f, progress / windUpEnd));
+        }
+        else if (progress < impactEnd)
+        {
+            float strikeProgress = Mathf.SmoothStep(
+                0f, 1f, (progress - windUpEnd) / (impactEnd - windUpEnd));
+            angle = Mathf.Lerp(windUpAngle, attackSwingAngle, strikeProgress);
+        }
+        else if (progress < followThroughEnd)
+        {
+            angle = attackSwingAngle;
+        }
+        else
+        {
+            float recoveryProgress = Mathf.SmoothStep(
+                0f, 1f, (progress - followThroughEnd) / (1f - followThroughEnd));
+            angle = Mathf.Lerp(attackSwingAngle, 0f, recoveryProgress);
+        }
+
         swordPivot.localRotation =
-            Quaternion.AngleAxis(attackSwingAngle * amount, Vector3.right) * swordRestRotation;
+            Quaternion.AngleAxis(angle, Vector3.right) * swordRestRotation;
+
+        // Add a small forward drive at impact so the strike reads as an attack, not a static tilt.
+        float lunge = Mathf.Sin(Mathf.Clamp01(progress) * Mathf.PI) * 0.14f;
+        float drop = Mathf.Sin(Mathf.Clamp01(progress) * Mathf.PI) * 0.035f;
+        swordPivot.localPosition = swordRestPosition + new Vector3(0f, -drop, lunge);
 
         if (progress >= 1f)
         {
             swordPivot.localRotation = swordRestRotation;
+            swordPivot.localPosition = swordRestPosition;
             isAttacking = false;
         }
     }
@@ -89,6 +123,7 @@ public sealed class PlayerCombatVisuals : MonoBehaviour
         // Turn the broad face 90 degrees around vertical Y so the blade sits side-on to the capsule.
         swordPivot.localRotation = Quaternion.Euler(0f, 90f, 0f);
         swordRestRotation = swordPivot.localRotation;
+        swordRestPosition = swordPivot.localPosition;
 
         Material steel = GetMaterial("Sword_Steel", new Color(0.72f, 0.77f, 0.81f), 0.78f, 0.72f);
         Material brightSteel = GetMaterial("Sword_Edge", new Color(0.91f, 0.93f, 0.94f), 0.85f, 0.82f);
