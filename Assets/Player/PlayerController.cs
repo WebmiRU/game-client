@@ -163,6 +163,52 @@ public class PlayerController : MonoBehaviour
             "surfaceY=" + surfaceY + ", newPosition=" + transform.position);
     }
 
+    /// <summary>
+    /// Applies the server's spawn surface coordinate and offsets the character root
+    /// so the CharacterController feet meet that surface.
+    /// </summary>
+    public void SetSpawnSurfacePosition(Vector3 surfacePosition)
+    {
+        if (characterController == null)
+        {
+            characterController = GetComponent<CharacterController>();
+        }
+
+        _hasMoveTarget = false;
+        _verticalVelocity = 0f;
+        _targetPosition = surfacePosition;
+
+        if (_moveTargetInstance != null)
+        {
+            _moveTargetInstance.SetActive(false);
+        }
+
+        Vector3 characterPosition = surfacePosition;
+        if (characterController != null)
+        {
+            characterPosition.y += characterController.height * 0.5f -
+                characterController.center.y + 0.05f;
+        }
+
+        bool wasEnabled = characterController != null && characterController.enabled;
+        if (wasEnabled)
+        {
+            characterController.enabled = false;
+        }
+
+        transform.position = characterPosition;
+
+        if (wasEnabled)
+        {
+            characterController.enabled = true;
+        }
+
+        Physics.SyncTransforms();
+        Debug.Log(
+            "PlayerController: spawned from server; surface=" + surfacePosition +
+            ", characterPosition=" + transform.position);
+    }
+
     private void CreateForwardMarker()
     {
         GameObject marker = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
