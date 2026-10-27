@@ -21,6 +21,18 @@ public class PlayerController : MonoBehaviour
     private bool _hasMoveTarget;
     private GameObject _moveTargetInstance;
 
+    private GameServerLoginUI _gameServerLogin;
+    private float _nextNetworkSyncTime;
+    private float _nextNetworkHeartbeatTime;
+    private Vector3 _lastSentNetworkPosition;
+    private Quaternion _lastSentNetworkRotation;
+    private bool _hasSentNetworkState;
+
+    private const float NetworkStateSyncInterval = 0.1f;
+    private const float NetworkStateHeartbeatInterval = 1f;
+    private const float NetworkPositionThreshold = 0.05f;
+    private const float NetworkRotationThresholdDegrees = 1f;
+
     private void Awake()
     {
         if (characterController == null)
@@ -177,6 +189,9 @@ public class PlayerController : MonoBehaviour
         _hasMoveTarget = false;
         _verticalVelocity = 0f;
         _targetPosition = surfacePosition;
+        _hasSentNetworkState = false;
+        _nextNetworkSyncTime = 0f;
+        _nextNetworkHeartbeatTime = 0f;
 
         if (_moveTargetInstance != null)
         {
@@ -303,6 +318,45 @@ public class PlayerController : MonoBehaviour
         
 
         characterController.Move(movement * Time.deltaTime);
+        SyncNetworkStateIfNeeded();
+    }
+
+    private void SyncNetworkStateIfNeeded()
+    {
+        if (_gameServerLogin == null)
+        {
+            _gameServerLogin = GameServerLoginUI.Instance;
+        }
+
+        if (_gameServerLogin == null || !_gameServerLogin.IsReadyForPlayerState)
+        {
+            return;
+        }
+
+        float now = Time.unscaledTime;
+        if (now < _nextNetworkSyncTime)
+        {
+            return;
+        }
+        _nextNetworkSyncTime = now + NetworkStateSyncInterval;
+
+        Vector3 position = transform.position;
+        Quaternion rotation = transform.rotation;
+        bool hasMeaningfulChange = !_hasSentNetworkState ||
+            (position - _lastSentNetworkPosition).sqrMagnitude >=
+                NetworkPositionThreshold * NetworkPositionThreshold ||
+            Quaternion.Angle(rotation, _lastSentNetworkRotation) >= NetworkRotationThresholdDegrees;
+        bool heartbeatDue = !_hasSentNetworkState || now >= _nextNetworkHeartbeatTime;
+        if (!hasMeaningfulChange && !heartbeatDue)
+        {
+            return;
+        }
+
+        _gameServerLogin.SendPlayerState(position, rotation);
+        _lastSentNetworkPosition = position;
+        _lastSentNetworkRotation = rotation;
+        _hasSentNetworkState = true;
+        _nextNetworkHeartbeatTime = now + NetworkStateHeartbeatInterval;
     }
 
     private void TrySetMoveTargetFromMouse()
