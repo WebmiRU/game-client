@@ -13,7 +13,6 @@ using UnityEngine.SceneManagement;
 public static class WorldTerrainGenerator
 {
     private const string OutputFolder = "Assets/GeneratedWorld";
-    private const string GeneratedTerrainPath = OutputFolder + "/GeneratedWorldTerrain.asset";
     private const string GrassTexturePath = OutputFolder + "/Grass_Procedural.png";
     private const string SoilTexturePath = OutputFolder + "/Soil_Procedural.png";
     private const string RockTexturePath = OutputFolder + "/Rock_Procedural.png";
@@ -60,28 +59,51 @@ public static class WorldTerrainGenerator
     [MenuItem("Tools/Game Client/Generate Mountain Ring Terrain")]
     private static void Generate()
     {
-        Terrain terrain = Selection.activeGameObject != null
-            ? Selection.activeGameObject.GetComponent<Terrain>()
-            : null;
+        // Only generate in a scene that actually contains the playable character and orbit camera.
+        // This prevents accidentally rebuilding the small, scenery-only SampleScene.
+        Scene activeScene = SceneManager.GetActiveScene();
+        PlayerController player = FindInScene<PlayerController>(activeScene);
+        ThirdPersonCameraController orbitCamera = FindInScene<ThirdPersonCameraController>(activeScene);
+        Camera renderingCamera = FindInScene<Camera>(activeScene);
+
+        if (player == null || orbitCamera == null || renderingCamera == null)
+        {
+            string sceneName = string.IsNullOrEmpty(activeScene.path) ? activeScene.name : activeScene.path;
+            EditorUtility.DisplayDialog(
+                "Неподходящая сцена",
+                "В открытой сцене не найдены все компоненты персонажа и камеры. Ничего не изменено.\n\n" +
+                "Открой Assets/FreeTestCharacterAsuna/ExampleScene+Readme/ExampleScene.unity " +
+                "или сцену, в которой есть PlayerController, ThirdPersonCameraController и Main Camera, " +
+                "и запусти генератор ещё раз.\n\nТекущая сцена: " + sceneName,
+                "OK");
+            return;
+        }
+
+        Terrain terrain = null;
+        if (Selection.activeGameObject != null &&
+            Selection.activeGameObject.scene == activeScene)
+        {
+            terrain = Selection.activeGameObject.GetComponent<Terrain>();
+        }
 
         if (terrain == null)
         {
-            terrain = UnityEngine.Object.FindFirstObjectByType<Terrain>();
+            terrain = FindInScene<Terrain>(activeScene);
         }
 
         if (terrain == null || terrain.terrainData == null)
         {
             EditorUtility.DisplayDialog(
                 "Terrain generator",
-                "Не найден Terrain с назначенным TerrainData. Открой сцену с ландшафтом и повтори команду.",
+                "В текущей игровой сцене не найден Terrain с назначенным TerrainData. Ничего не изменено.",
                 "OK");
             return;
         }
 
         bool confirmed = EditorUtility.DisplayDialog(
             "Generate starter world",
-            "Будет создан отдельный TerrainData, чтобы исходный ландшафт остался нетронутым. " +
-            "Текущий Terrain получит горный периметр, холмы, траву/землю/камень и невидимые стены на границе. " +
+            "Будет создан отдельный TerrainData именно для этой сцены. Размер исходного ландшафта сохранится; " +
+            "персонаж останется на карте и будет установлен на поверхность. " +
             "После генерации сохрани сцену сочетанием Ctrl+S.",
             "Создать ландшафт",
             "Отмена");
@@ -93,7 +115,7 @@ public static class WorldTerrainGenerator
 
         try
         {
-            GenerateFor(terrain);
+            GenerateFor(terrain, player);
         }
         catch (Exception exception)
         {
@@ -105,17 +127,74 @@ public static class WorldTerrainGenerator
         }
     }
 
-    private static void GenerateFor(Terrain terrain)
+    private static T FindInScene<T>(Scene scene) where T : Component
+    {
+        if (!scene.IsValid() || !scene.isLoaded)
+        {
+            return null;
+        }
+
+        foreach (GameObject root in scene.GetRootGameObjects())
+        {
+            T component = root.GetComponentInChildren<T>(true);
+            if (component != null)
+            {
+                return component;
+            }
+        }
+
+        return null;
+    }
+
+    private static string GetGeneratedTerrainPath(Terrain terrain)
+    {
+        string sceneName = SafeAssetName(terrain.gameObject.scene.name);
+        string terrainName = SafeAssetName(terrain.gameObject.name);
+        return OutputFolder + "/GeneratedWorldTerrain_" + sceneName + "_" + terrainName + ".asset";
+    }
+
+    private static string SafeAssetName(string value)
+    {
+        foreach (char invalid in Path.GetInvalidFileNameChars())
+        {
+            value = value.Replace(invalid, '_');
+        }
+
+        return value.Replace(' ', '_').Replace('+', '_');
+    }
+
+    private static void GenerateFor(Terrain terrain, PlayerController player)
     {
         EnsureAssetFolder(OutputFolder);
 
-        TerrainData data = AssetDatabase.LoadAssetAtPath<TerrainData>(GeneratedTerrainPath);
+        // Keep this scene's original dimensions/resolutions even if another scene was generated earlier.
+        TerrainData sourceData = terrain.terrainData;
+        string terrainAssetPath = GetGeneratedTerrainPath(terrain);
+        TerrainData data = AssetDatabase.LoadAssetAtPath<TerrainData>(terrainAssetPath);
+
         if (data == null)
         {
-            data = UnityEngine.Object.Instantiate(terrain.terrainData);
-            data.name = "GeneratedWorldTerrain";
-            AssetDatabase.CreateAsset(data, GeneratedTerrainPath);
+            data = UnityEngine.Object.Instantiate(sourceData);
+            data.name = Path.GetFileNameWithoutExtension(terrainAssetPath);
+            AssetDatabase.CreateAsset(data, terrainAssetPath);
         }
+        else if (data != sourceData)
+        {
+            Undo.RecordObject(data, "Preserve source terrain dimensions");
+            data.size = sourceData.size;
+
+            if (data.heightmapResolution != sourceData.heightmapResolution)
+            {
+                data.heightmapResolution = sourceData.heightmapResolution;
+            }
+
+            if (data.alphamapResolution != sourceData.alphamapResolution)
+            {
+                data.alphamapResolution = sourceData.alphamapResolution;
+            }
+        }
+
+        Vector2 spawnUv = WorldToTerrainUv(terrain, sourceData, player.transform.position);
 
         Undo.RecordObject(terrain, "Generate mountain ring terrain");
         terrain.terrainData = data;
@@ -138,9 +217,10 @@ public static class WorldTerrainGenerator
 
         data.terrainLayers = new[] { grass, soil, rock };
 
-        GenerateHeights(data);
+        GenerateHeights(data, spawnUv);
         GenerateTextureWeights(data);
         CreateBoundaryWalls(terrain, data);
+        PlacePlayerOnTerrain(player, terrain, data, spawnUv);
 
         terrain.drawInstanced = true;
         terrain.heightmapPixelError = 5f;
@@ -148,6 +228,7 @@ public static class WorldTerrainGenerator
         EditorUtility.SetDirty(data);
         EditorUtility.SetDirty(terrain);
         EditorUtility.SetDirty(terrainCollider);
+        EditorUtility.SetDirty(player);
         AssetDatabase.SaveAssets();
         terrain.Flush();
 
@@ -159,16 +240,17 @@ public static class WorldTerrainGenerator
 
         SceneView.RepaintAll();
         Debug.Log(
-            "World terrain generated. TerrainData: " + GeneratedTerrainPath +
-            ". Grass/soil/rock textures and boundary colliders are ready. Save the scene with Ctrl+S.");
+            "World terrain generated. TerrainData: " + terrainAssetPath +
+            ". Source dimensions were preserved; player position was restored to the terrain surface.");
         EditorUtility.DisplayDialog(
             "Terrain generated",
             "Готово: холмы, горный периметр, три процедурные текстуры и невидимые ограничители созданы. " +
-            "Исходный TerrainData сохранён отдельно. Нажми Ctrl+S, чтобы сохранить изменения сцены.",
+            "Размер Terrain сохранён, персонаж установлен на поверхность, исходный TerrainData не перезаписан. " +
+            "Нажми Ctrl+S, чтобы сохранить изменения сцены.",
             "OK");
     }
 
-    private static void GenerateHeights(TerrainData data)
+    private static void GenerateHeights(TerrainData data, Vector2 spawnUv)
     {
         int resolution = data.heightmapResolution;
         float[,] heights = new float[resolution, resolution];
@@ -216,11 +298,11 @@ public static class WorldTerrainGenerator
                 float outerLip = (1f - SmoothStep(0f, 0.045f, edgeDistance)) * 0.19f;
                 height += ridge + outerLip;
 
-                // Leave a calm spawn area near the centre so the player has room to start moving.
-                float centerDx = u - 0.5f;
-                float centerDz = v - 0.5f;
+                // Keep a calm spawn area under the player rather than assuming the player is at map centre.
+                float centerDx = u - spawnUv.x;
+                float centerDz = v - spawnUv.y;
                 float centerDistance = Mathf.Sqrt(centerDx * centerDx + centerDz * centerDz);
-                float clearing = 1f - SmoothStep(0.12f, 0.22f, centerDistance);
+                float clearing = 1f - SmoothStep(0.08f, 0.18f, centerDistance);
                 float clearingHeight = 0.043f + (detail - 0.5f) * 0.006f;
                 height = Mathf.Lerp(height, clearingHeight, clearing);
 
@@ -387,6 +469,52 @@ public static class WorldTerrainGenerator
         layer.smoothness = smoothness;
         EditorUtility.SetDirty(layer);
         return layer;
+    }
+
+    private static Vector2 WorldToTerrainUv(Terrain terrain, TerrainData data, Vector3 worldPosition)
+    {
+        Vector3 terrainPosition = terrain.transform.position;
+        Vector3 scale = terrain.transform.lossyScale;
+        float worldWidth = Mathf.Max(0.001f, data.size.x * Mathf.Abs(scale.x));
+        float worldLength = Mathf.Max(0.001f, data.size.z * Mathf.Abs(scale.z));
+
+        float u = (worldPosition.x - terrainPosition.x) / worldWidth;
+        float v = (worldPosition.z - terrainPosition.z) / worldLength;
+
+        // Give the character a small margin from the cliffs and boundary colliders.
+        return new Vector2(Mathf.Clamp(u, 0.03f, 0.97f), Mathf.Clamp(v, 0.03f, 0.97f));
+    }
+
+    private static void PlacePlayerOnTerrain(
+        PlayerController player,
+        Terrain terrain,
+        TerrainData data,
+        Vector2 terrainUv)
+    {
+        Vector3 terrainPosition = terrain.transform.position;
+        Vector3 scale = terrain.transform.lossyScale;
+
+        Vector3 playerPosition = player.transform.position;
+        playerPosition.x = terrainPosition.x + terrainUv.x * data.size.x * Mathf.Abs(scale.x);
+        playerPosition.z = terrainPosition.z + terrainUv.y * data.size.z * Mathf.Abs(scale.z);
+        playerPosition.y = terrainPosition.y
+            + data.GetInterpolatedHeight(terrainUv.x, terrainUv.y) * Mathf.Abs(scale.y)
+            + 0.05f;
+
+        CharacterController controller = player.GetComponent<CharacterController>();
+        bool controllerWasEnabled = controller != null && controller.enabled;
+
+        if (controllerWasEnabled)
+        {
+            controller.enabled = false;
+        }
+
+        player.transform.position = playerPosition;
+
+        if (controllerWasEnabled)
+        {
+            controller.enabled = true;
+        }
     }
 
     private static void CreateBoundaryWalls(Terrain terrain, TerrainData data)
