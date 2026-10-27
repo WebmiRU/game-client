@@ -358,6 +358,14 @@ public sealed class GameServerLoginUI : MonoBehaviour
                     "GameServer: authentication failed; username=" + AutoLoginUsername +
                     ", server=" + _host + ":" + DefaultPort +
                     ", reason=" + reason);
+
+                // The server closes duplicate sessions immediately; don't leave the UI
+                // claiming that the TCP connection is still available for another auth try.
+                if (reason == "already_logged_in")
+                {
+                    DisconnectFromServer(false);
+                    _status = "Отказ: " + reason;
+                }
                 return;
             }
 
