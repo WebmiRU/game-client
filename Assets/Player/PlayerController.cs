@@ -192,10 +192,14 @@ public class PlayerController : MonoBehaviour
         // movement destination running forever.
         if (_meleeTarget == null ||
             !_meleeTarget.gameObject.activeInHierarchy ||
-            !System.String.Equals(
+            (!System.String.Equals(
                 _meleeTarget.TargetType,
                 "monster",
-                System.StringComparison.OrdinalIgnoreCase) ||
+                System.StringComparison.OrdinalIgnoreCase) &&
+             !System.String.Equals(
+                _meleeTarget.TargetType,
+                "player",
+                System.StringComparison.OrdinalIgnoreCase)) ||
             (_gameServerLogin != null && !_gameServerLogin.IsTargetSelected(_meleeTarget)))
         {
             CancelMeleeAttack();
@@ -251,7 +255,7 @@ public class PlayerController : MonoBehaviour
                 float attackInterval = 1f / GetCurrentServerAttackSpeed();
                 int requestId = NextAttackRequestId();
                 if (_gameServerLogin != null &&
-                    _gameServerLogin.RequestAttack(_meleeTarget, requestId))
+                    _gameServerLogin.RequestAttack(requestId))
                 {
                     _attackRequestPending = true;
                     _pendingAttackRequestId = requestId;
@@ -1151,12 +1155,11 @@ public class PlayerController : MonoBehaviour
 
             bool alreadySelected = _gameServerLogin != null &&
                 _gameServerLogin.IsTargetSelected(clickedTarget);
-            bool isMonster = System.String.Equals(
-                clickedTarget.TargetType,
-                "monster",
-                System.StringComparison.OrdinalIgnoreCase);
+            bool isAttackableTarget =
+                System.String.Equals(clickedTarget.TargetType, "monster", System.StringComparison.OrdinalIgnoreCase) ||
+                System.String.Equals(clickedTarget.TargetType, "player", System.StringComparison.OrdinalIgnoreCase);
 
-            if (alreadySelected && isMonster)
+            if (alreadySelected && isAttackableTarget)
             {
                 // First click selects the monster; clicking that same selection again
                 // starts melee pursuit and repeated attacks.
