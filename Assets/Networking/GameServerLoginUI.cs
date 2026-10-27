@@ -1110,8 +1110,8 @@ public sealed class GameServerLoginUI : MonoBehaviour
                 deathPresentation = view.AddComponent<MonsterDeathPresentation>();
             }
 
-            // The server sends the monster's base/contact position. While alive and falling,
-            // preserve the exact server Y; once landed, use this client's Terrain surface.
+            // The server sends base/contact coordinates. Falling motion is predicted locally
+            // and reconciled with server position/velocity; landed mobs align to this Terrain.
             // Once dead, let the client-owned roll animation control the corpse position so
             // periodic snapshots cannot snap the body back to its standing point.
             if (!deathPresentation.IsDead)
@@ -1198,45 +1198,45 @@ public sealed class GameServerLoginUI : MonoBehaviour
         // corpse fade. An omitted view has left the requested range or its corpse expired.
         if (!message.partialSnapshot)
         {
-        List<string> staleIDs = new List<string>();
-        foreach (KeyValuePair<string, GameObject> pair in _monsterViews)
-        {
-            if (!visibleMonsterIDs.Contains(pair.Key))
+            List<string> staleIDs = new List<string>();
+            foreach (KeyValuePair<string, GameObject> pair in _monsterViews)
             {
-                if (pair.Value != null)
+                if (!visibleMonsterIDs.Contains(pair.Key))
                 {
-                    Destroy(pair.Value);
+                    if (pair.Value != null)
+                    {
+                        Destroy(pair.Value);
+                    }
+                    staleIDs.Add(pair.Key);
                 }
-                staleIDs.Add(pair.Key);
             }
-        }
-        foreach (string staleID in staleIDs)
-        {
-            if (_monsterTemplateIds.TryGetValue(staleID, out string staleTemplate))
+            foreach (string staleID in staleIDs)
             {
-                DestroyMonsterAssets(staleID, staleTemplate);
+                if (_monsterTemplateIds.TryGetValue(staleID, out string staleTemplate))
+                {
+                    DestroyMonsterAssets(staleID, staleTemplate);
+                }
+                _monsterViews.Remove(staleID);
+                _monsterTemplateIds.Remove(staleID);
             }
-            _monsterViews.Remove(staleID);
-            _monsterTemplateIds.Remove(staleID);
-        }
 
-        ApplyGroundItemViews(items);
-        if (!_hasPendingTargetSelection)
-        {
-            ApplySelectedTarget(message.target);
-        }
+            ApplyGroundItemViews(items);
+            if (!_hasPendingTargetSelection)
+            {
+                ApplySelectedTarget(message.target);
+            }
 
-        int playerCount = message.players == null ? 0 : message.players.Length;
-        int itemCount = items.Length;
-        string summary = "players=" + playerCount +
-            ", monsters=" + monsters.Length +
-            ", items=" + itemCount +
-            ", range=" + Mathf.RoundToInt(message.visibilityRange);
-        if (summary != _lastSnapshotSummary)
-        {
-            _lastSnapshotSummary = summary;
-            Debug.Log("GameServer: world snapshot received; " + summary);
-        }
+            int playerCount = message.players == null ? 0 : message.players.Length;
+            int itemCount = items.Length;
+            string summary = "players=" + playerCount +
+                ", monsters=" + monsters.Length +
+                ", items=" + itemCount +
+                ", range=" + Mathf.RoundToInt(message.visibilityRange);
+            if (summary != _lastSnapshotSummary)
+            {
+                _lastSnapshotSummary = summary;
+                Debug.Log("GameServer: world snapshot received; " + summary);
+            }
         }
     }
 
