@@ -1,4 +1,3 @@
-using Unity.Cinemachine;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
@@ -6,7 +5,6 @@ using UnityEngine.InputSystem;
 public class PlayerController : MonoBehaviour
 {
     [SerializeField] private CharacterController characterController;
-    [SerializeField] private CinemachineCamera cinemachineCamera;
     [SerializeField] private float moveSpeed = 5f;
     [SerializeField] private float gravity = -9.81f;
     [SerializeField] private float rotationSpeed = 720f;
@@ -17,7 +15,6 @@ public class PlayerController : MonoBehaviour
     [SerializeField] private GameObject moveTargetPrefab;
 
     private Camera playerCamera;
-    private Vector2 _move;
     private float _verticalVelocity;
     private Vector3 _targetPosition;
     private bool _hasMoveTarget;
@@ -94,10 +91,6 @@ public class PlayerController : MonoBehaviour
         }
     }
 
-    public void OnMove(InputValue val)
-    {
-        _move = val.Get<Vector2>();
-    }
 
     private void Update()
     {
@@ -112,15 +105,10 @@ public class PlayerController : MonoBehaviour
             TrySetMoveTargetFromMouse();
         }
 
-        // Manual movement takes priority over click-to-move.
-        Vector3 horizontalMovement = new Vector3(_move.x, 0f, _move.y);
-        horizontalMovement = Vector3.ClampMagnitude(horizontalMovement, 1f);
+        // Movement is exclusively click-to-move; no keyboard movement is processed.
+        Vector3 horizontalMovement = Vector3.zero;
 
-        if (horizontalMovement.sqrMagnitude > 0.001f)
-        {
-            _hasMoveTarget = false;
-        }
-        else if (_hasMoveTarget)
+        if (_hasMoveTarget)
         {
             Vector3 toTarget = _targetPosition - transform.position;
             toTarget.y = 0f;
@@ -128,7 +116,7 @@ public class PlayerController : MonoBehaviour
             if (toTarget.magnitude <= clickStopDistance)
             {
                 _hasMoveTarget = false;
-                
+
                 if (_moveTargetInstance != null)
                 {
                     _moveTargetInstance.SetActive(false);
