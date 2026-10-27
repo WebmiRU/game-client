@@ -63,6 +63,8 @@ public sealed class GameServerLoginUI : MonoBehaviour
         public WorldMonsterData[] monsters;
         public WorldGroundItemData[] items;
         public WorldTargetData target;
+        // Client-only marker: this packet contains one entity event, not a full world snapshot.
+        public bool partialSnapshot;
     }
 
     [Serializable]
@@ -117,6 +119,10 @@ public sealed class GameServerLoginUI : MonoBehaviour
         public float deathElapsedSeconds;
         public bool spawning;
         public float spawnElapsedSeconds;
+        public WorldVector3 spawnStartPosition;
+        public float groundY;
+        public float verticalVelocity;
+        public float fallElapsedSeconds;
         public string action;
         public string aiState;
     }
@@ -721,6 +727,15 @@ public sealed class GameServerLoginUI : MonoBehaviour
                     ", rotation=" + _pendingSpawnRotation);
                 break;
 
+            case "monster_spawned":
+                if (message.monster != null)
+                {
+                    message.partialSnapshot = true;
+                    message.monsters = new[] { message.monster };
+                    ApplyWorldSnapshot(message);
+                }
+                break;
+
             case "world_snapshot":
                 if (!message.success)
                 {
@@ -954,7 +969,10 @@ public sealed class GameServerLoginUI : MonoBehaviour
             _hasServerAttackSpeed = true;
         }
 
-        ApplyOtherPlayerCollisionViews(message.players);
+        if (!message.partialSnapshot)
+        {
+            ApplyOtherPlayerCollisionViews(message.players);
+        }
 
         WorldMonsterData[] monsters = message.monsters ?? Array.Empty<WorldMonsterData>();
         WorldGroundItemData[] items = message.items ?? Array.Empty<WorldGroundItemData>();
@@ -1105,10 +1123,31 @@ public sealed class GameServerLoginUI : MonoBehaviour
                     baseY = terrainY;
                 }
 
-                view.transform.position = new Vector3(
+                Vector3 serverViewPosition = new Vector3(
                     monster.position.x,
                     baseY + modelSize * 0.5f,
                     monster.position.z);
+                MonsterMotionPresentation motionPresentation =
+                    view.GetComponent<MonsterMotionPresentation>();
+                if (motionPresentation == null)
+                {
+                    motionPresentation = view.AddComponent<MonsterMotionPresentation>();
+                }
+
+                // Falling is predicted locally between snapshots. The server still supplies
+                // position, ground height and vertical velocity for authoritative corrections.
+                if (isFalling && monster.spawnStartPosition != null)
+                {
+                    motionPresentation.ApplyServerState(
+                        serverViewPosition,
+                        true,
+                        monster.groundY,
+                        monster.verticalVelocity);
+                }
+                else
+                {
+                    motionPresentation.ApplyServerState(serverViewPosition, false, baseY, 0f);
+                }
             }
 
             // Rotation always comes from the server until death begins. Identity (+Z forward)
@@ -1151,11 +1190,14 @@ public sealed class GameServerLoginUI : MonoBehaviour
             }
 
             deathPresentation.ApplyServerState(
-                monster.alive, templateID, monster.deathElapsedSeconds, monster.spawning);
+                monster.alive, templateID, monster.deathElapsedSeconds,
+                monster.spawning, monster.spawnElapsedSeconds);
         }
 
         // The server keeps dead monsters in snapshots during their death animation and
         // corpse fade. An omitted view has left the requested range or its corpse expired.
+        if (!message.partialSnapshot)
+        {
         List<string> staleIDs = new List<string>();
         foreach (KeyValuePair<string, GameObject> pair in _monsterViews)
         {
@@ -1195,6 +1237,7 @@ public sealed class GameServerLoginUI : MonoBehaviour
             _lastSnapshotSummary = summary;
             Debug.Log("GameServer: world snapshot received; " + summary);
         }
+        }
     }
 
     private void ApplyMonsterCombatResult(WorldMonsterData monster)
@@ -1228,7 +1271,8 @@ public sealed class GameServerLoginUI : MonoBehaviour
             deathPresentation = view.AddComponent<MonsterDeathPresentation>();
         }
         deathPresentation.ApplyServerState(
-            monster.alive, monster.templateId, monster.deathElapsedSeconds, monster.spawning);
+            monster.alive, monster.templateId, monster.deathElapsedSeconds,
+            monster.spawning, monster.spawnElapsedSeconds);
     }
 
     private static float PositiveOrDefault(float value, float fallback)
