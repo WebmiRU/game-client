@@ -13,32 +13,31 @@ public class PlayerController : MonoBehaviour
     [SerializeField] private float forwardMarkerLength = 0.65f;
     [SerializeField] private float forwardMarkerRadius = 0.12f;
     [SerializeField] private Color forwardMarkerColor = new Color(1f, 0.25f, 0.05f);
-    [SerializeField] private CinemachineBrain cinemachineBrain;
+    [SerializeField] private float clickStopDistance = 0.2f;
 
     private Camera playerCamera;
     private Vector2 _move;
     private float _verticalVelocity;
-    private Vector2 _mousePosition;
+    private Vector3 _targetPosition;
+    private bool _hasMoveTarget;
 
     private void Awake()
     {
-        if (cinemachineBrain == null)
-        {
-            cinemachineBrain = FindFirstObjectByType<CinemachineBrain>();
-        }
-
-        if (cinemachineBrain != null)
-        {
-            playerCamera = cinemachineBrain.OutputCamera;
-        }
-        else
-        {
-            Debug.LogError("CinemachineBrain не найден! Проверь, что он установлен на реальной камере, выводящей изображение.");
-        }
-
         if (characterController == null)
         {
             characterController = GetComponent<CharacterController>();
+        }
+
+        // CinemachineCamera is virtual. Camera.main is the real camera that renders the view.
+        playerCamera = Camera.main;
+        if (playerCamera == null)
+        {
+            playerCamera = FindFirstObjectByType<Camera>();
+        }
+
+        if (playerCamera == null)
+        {
+            Debug.LogError("PlayerController: no rendering Camera found. Ensure the scene has a Camera (normally tagged MainCamera).");
         }
 
         CreateForwardMarker();
@@ -92,15 +91,41 @@ public class PlayerController : MonoBehaviour
             return;
         }
 
+        // Clicking the world selects a Terrain point to walk to.
+        if (Mouse.current != null && Mouse.current.leftButton.wasPressedThisFrame)
+        {
+            TrySetMoveTargetFromMouse();
+        }
+
+        // Manual movement takes priority over click-to-move.
+        Vector3 horizontalMovement = new Vector3(_move.x, 0f, _move.y);
+        horizontalMovement = Vector3.ClampMagnitude(horizontalMovement, 1f);
+
+        if (horizontalMovement.sqrMagnitude > 0.001f)
+        {
+            _hasMoveTarget = false;
+        }
+        else if (_hasMoveTarget)
+        {
+            Vector3 toTarget = _targetPosition - transform.position;
+            toTarget.y = 0f;
+
+            if (toTarget.magnitude <= clickStopDistance)
+            {
+                _hasMoveTarget = false;
+            }
+            else
+            {
+                horizontalMovement = toTarget.normalized;
+            }
+        }
+
         if (characterController.isGrounded && _verticalVelocity < 0f)
         {
             _verticalVelocity = -2f;
         }
 
         _verticalVelocity += gravity * Time.deltaTime;
-
-        Vector3 horizontalMovement = new Vector3(_move.x, 0f, _move.y);
-        horizontalMovement = Vector3.ClampMagnitude(horizontalMovement, 1f);
 
         if (horizontalMovement.sqrMagnitude > 0.001f)
         {
@@ -115,32 +140,64 @@ public class PlayerController : MonoBehaviour
         movement.y = _verticalVelocity;
 
         characterController.Move(movement * Time.deltaTime);
-        
-        if (Mouse.current != null &&
-            Mouse.current.leftButton.wasPressedThisFrame)
+    }
+
+    private void TrySetMoveTargetFromMouse()
+    {
+        // Resolve again in case the camera became active after this component's Awake.
+        if (playerCamera == null)
         {
-            if (playerCamera == null)
+            playerCamera = Camera.main;
+        }
+
+        if (playerCamera == null)
+        {
+            Debug.LogError("Click-to-move: no rendering Camera found; ray was not created.");
+            return;
+        }
+
+        Vector2 mousePosition = Mouse.current.position.ReadValue();
+        Ray ray = playerCamera.ScreenPointToRay(mousePosition);
+
+        // Search all hits and select the nearest TerrainCollider specifically.
+        // This avoids accidentally treating the character or another object as terrain.
+        RaycastHit[] hits = Physics.RaycastAll(
+            ray,
+            1000f,
+            Physics.DefaultRaycastLayers,
+            QueryTriggerInteraction.Ignore);
+
+        bool foundTerrain = false;
+        RaycastHit terrainHit = default;
+
+        foreach (RaycastHit hit in hits)
+        {
+            if (hit.collider is TerrainCollider &&
+                (!foundTerrain || hit.distance < terrainHit.distance))
             {
-                Debug.LogError("PlayerCamera не найдена!");
-                return;
+                terrainHit = hit;
+                foundTerrain = true;
             }
+        }
 
-            Vector2 mousePosition =
-                Mouse.current.position.ReadValue();
-
-            Ray ray = playerCamera.ScreenPointToRay(mousePosition);
-
-            if (Physics.Raycast(ray, out RaycastHit hit, 1000f))
+        if (!foundTerrain)
+        {
+            if (hits.Length > 0)
             {
-                Debug.Log(
-                    $"Попадание: {hit.collider.name}, " +
-                    $"координаты: {hit.point}"
-                );
+                Debug.LogWarning(
+                    $"Click-to-move: ray hit '{hits[0].collider.name}', but no TerrainCollider was found along the ray.");
             }
             else
             {
-                Debug.Log("Луч не попал ни в один Collider");
+                Debug.LogWarning("Click-to-move: ray did not hit any Collider. Check that the Terrain has an enabled TerrainCollider.");
             }
+
+            return;
         }
+
+        _targetPosition = terrainHit.point;
+        _hasMoveTarget = true;
+
+        Debug.Log($"Click-to-move target: {_targetPosition} (Terrain: {terrainHit.collider.name})");
     }
 }
