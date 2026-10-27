@@ -119,7 +119,7 @@ public sealed class PlayerCombatVisuals : MonoBehaviour
         shield.transform.SetParent(visualAnchor, false);
         shield.transform.localPosition = new Vector3(-0.62f, -0.015f, 0.075f);
         // The shield plane is rotated edge-on to the capsule, facing outward from its left side.
-        shield.transform.localRotation = Quaternion.Euler(0f, 90f, 0f);
+        shield.transform.localRotation = Quaternion.Euler(0f, -90f, 0f);
 
         Material wood = GetMaterial("Shield_Wood", new Color(0.31f, 0.13f, 0.045f), 0.03f, 0.28f);
         Material rim = GetMaterial("Shield_Rim", new Color(0.64f, 0.43f, 0.17f), 0.68f, 0.55f);
