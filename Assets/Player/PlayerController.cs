@@ -40,6 +40,7 @@ public class PlayerController : MonoBehaviour
         {
             characterController = GetComponent<CharacterController>();
         }
+        ConfigureCharacterCollider();
 
         // CinemachineCamera is virtual. Camera.main is the real camera that renders the view.
         playerCamera = Camera.main;
@@ -71,6 +72,34 @@ public class PlayerController : MonoBehaviour
         EnsureTerrainCollider();
         SnapCharacterAboveTerrainIfBuried();
         CreateForwardMarker();
+    }
+
+    private void ConfigureCharacterCollider()
+    {
+        if (characterController == null)
+        {
+            return;
+        }
+
+        Vector3 scale = transform.lossyScale;
+        float scaleX = Mathf.Max(0.0001f, Mathf.Abs(scale.x));
+        float scaleY = Mathf.Max(0.0001f, Mathf.Abs(scale.y));
+        float scaleZ = Mathf.Max(0.0001f, Mathf.Abs(scale.z));
+
+        // Keep the world-space collider at height 2 m and diameter 0.5 m even if
+        // the imported character root uses a non-unit scale. Its bottom is at transform.position.
+        characterController.height = 2f / scaleY;
+        characterController.radius = 0.25f / Mathf.Max(scaleX, scaleZ);
+        characterController.center = new Vector3(0f, 1f / scaleY, 0f);
+        characterController.skinWidth = Mathf.Min(0.025f, characterController.radius * 0.1f);
+        characterController.minMoveDistance = 0f;
+        characterController.stepOffset = Mathf.Min(0.3f / scaleY, characterController.height * 0.4f);
+
+        Debug.Log(
+            "PlayerController: collider configured; worldHeight=2, worldDiameter=0.5, " +
+            "localHeight=" + characterController.height +
+            ", localRadius=" + characterController.radius +
+            ", localCenter=" + characterController.center);
     }
 
     private void EnsureTerrainCollider()
@@ -244,6 +273,47 @@ public class PlayerController : MonoBehaviour
             ", positionIsCharacterRoot=" + positionIsCharacterRoot +
             ", characterPosition=" + transform.position +
             ", rotation=" + transform.rotation);
+    }
+
+    /// <summary>
+    /// Applies a server-approved position after the server has blocked movement through an
+    /// active player or monster. Stop the current click order to avoid repeatedly pushing
+    /// against a collision while local world-interest data catches up.
+    /// </summary>
+    public void ApplyServerCollisionCorrection(Vector3 acceptedPosition, Quaternion acceptedRotation)
+    {
+        if (characterController == null)
+        {
+            characterController = GetComponent<CharacterController>();
+        }
+
+        bool wasEnabled = characterController != null && characterController.enabled;
+        if (wasEnabled)
+        {
+            characterController.enabled = false;
+        }
+
+        transform.SetPositionAndRotation(acceptedPosition, acceptedRotation);
+
+        if (wasEnabled)
+        {
+            characterController.enabled = true;
+        }
+
+        _verticalVelocity = 0f;
+        _hasMoveTarget = false;
+        if (_moveTargetInstance != null)
+        {
+            _moveTargetInstance.SetActive(false);
+        }
+
+        Physics.SyncTransforms();
+        _hasSentNetworkState = false;
+        _nextNetworkSyncTime = 0f;
+
+        Debug.Log(
+            "PlayerController: applied server collision correction; position=" +
+            acceptedPosition + ", rotation=" + acceptedRotation);
     }
 
     private void CreateForwardMarker()
