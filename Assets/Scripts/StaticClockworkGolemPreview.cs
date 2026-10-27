@@ -128,11 +128,11 @@ public static class StaticClockworkGolemPreview
         if (name.Contains("maul") || name.Contains("hammer") || name.Contains("blade") ||
             name.Contains("spike") || name.Contains("strikingface"))
             return "weapon";
+        if (name.Contains("dark"))
+            return "wood-dark";
         if (name.Contains("grain") || name.Contains("stave") || name.Contains("spoke") ||
             name.Contains("barrel") || name.Contains("wood") || name.Contains("body"))
             return "wood";
-        if (name.Contains("dark"))
-            return "wood-dark";
         if (name.Contains("iron") || name.Contains("rivet") || name.Contains("metal") ||
             name.Contains("wheel") || name.Contains("axle") || name.Contains("pedal") ||
             name.Contains("hoop") || name.Contains("rim"))
