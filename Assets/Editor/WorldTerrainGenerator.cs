@@ -508,16 +508,25 @@ public static class WorldTerrainGenerator
         Vector3 terrainPosition = terrain.transform.position;
         Vector3 scale = terrain.transform.lossyScale;
 
+        CharacterController controller = playerTransform.GetComponent<CharacterController>();
         Vector3 playerPosition = playerTransform.position;
         playerPosition.x = terrainPosition.x + terrainUv.x * data.size.x * Mathf.Abs(scale.x);
         playerPosition.z = terrainPosition.z + terrainUv.y * data.size.z * Mathf.Abs(scale.z);
-        playerPosition.y = terrainPosition.y
-            + data.GetInterpolatedHeight(terrainUv.x, terrainUv.y) * Mathf.Abs(scale.y)
-            + 0.05f;
 
-        CharacterController controller = playerTransform.GetComponent<CharacterController>();
+        float surfaceHeight = terrainPosition.y
+            + data.GetInterpolatedHeight(terrainUv.x, terrainUv.y) * Mathf.Abs(scale.y);
+
+        // CharacterController.center may be zero (as it was in the original capsule scene).
+        // Place the capsule root so the controller's feet meet the ground instead of burying half of it.
+        float rootOffset = 0.05f;
+        if (controller != null)
+        {
+            rootOffset += controller.height * 0.5f - controller.center.y;
+        }
+
+        playerPosition.y = surfaceHeight + rootOffset;
+
         bool controllerWasEnabled = controller != null && controller.enabled;
-
         if (controllerWasEnabled)
         {
             controller.enabled = false;
