@@ -94,6 +94,7 @@ public sealed class GameServerLoginUI : MonoBehaviour
         public int health;
         public int maxHealth;
         public bool alive;
+        public string action;
         public string aiState;
     }
 
@@ -261,7 +262,7 @@ public sealed class GameServerLoginUI : MonoBehaviour
     private void OnGUI()
     {
         float panelWidth = Mathf.Min(300f, Screen.width - 24f);
-        float panelHeight = _isConnecting ? 92f : (_isConnected && _isAuthenticated ? 146f : 126f);
+        float panelHeight = _isConnecting ? 92f : (_isConnected && _isAuthenticated ? 176f : 126f);
         Rect panelRect = new Rect(
             12f,
             Mathf.Max(12f, Screen.height - panelHeight - 12f),
@@ -627,8 +628,8 @@ public sealed class GameServerLoginUI : MonoBehaviour
                 if (!message.success)
                 {
                     Debug.LogWarning("GameServer: world interest request rejected; reason=" + message.message);
-                    _hasSentWorldInterest = false;
-                    _nextWorldInterestTime = 0f;
+                    _hasSentWorldInterest = true;
+                    _nextWorldInterestTime = Time.unscaledTime + 0.25f;
                     return;
                 }
 
