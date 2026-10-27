@@ -29,6 +29,7 @@ public sealed class MonsterDeathPresentation : MonoBehaviour
     private bool _renderersHidden;
     private string _templateID = string.Empty;
     private float _deathStartedAt;
+    private Vector3 _standingPosition;
     private Quaternion _standingRotation;
     private Collider[] _colliders = System.Array.Empty<Collider>();
     private Renderer[] _renderers = System.Array.Empty<Renderer>();
@@ -56,6 +57,7 @@ public sealed class MonsterDeathPresentation : MonoBehaviour
 
         _isDead = true;
         _deathStartedAt = Time.time - elapsedAtReceipt;
+        _standingPosition = transform.position;
         _standingRotation = transform.rotation;
 
         _colliders = GetComponentsInChildren<Collider>(true);
@@ -128,6 +130,9 @@ public sealed class MonsterDeathPresentation : MonoBehaviour
             // swings upward. Rotation is spread over the full duration, never instant.
             transform.rotation = _standingRotation *
                 Quaternion.AngleAxis(90f * easedProgress, Vector3.right);
+            // Let the muzzle lead the fall slightly so the dog rolls forward rather than tipping in place.
+            transform.position = _standingPosition +
+                (_standingRotation * Vector3.forward) * (0.45f * easedProgress);
         }
         else if (_templateID == "test-sphere-enemy" && _smileDots.Count > 0)
         {
@@ -159,6 +164,10 @@ public sealed class MonsterDeathPresentation : MonoBehaviour
                         renderer.enabled = false;
                     }
                 }
+
+                // The server removes its entity at seven seconds. Remove the visual object
+                // at the same point; the world snapshot will then clear the stale dictionary entry.
+                Destroy(gameObject);
             }
         }
     }
