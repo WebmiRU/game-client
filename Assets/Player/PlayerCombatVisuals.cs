@@ -15,6 +15,7 @@ public sealed class PlayerCombatVisuals : MonoBehaviour
     private Transform swordPivot;
     private Quaternion swordRestRotation = Quaternion.identity;
     private float attackElapsed;
+    private float activeAttackDuration;
     private bool isAttacking;
     private bool initialized;
 
@@ -32,11 +33,28 @@ public sealed class PlayerCombatVisuals : MonoBehaviour
     /// <summary>Plays the local swing animation only; does not apply damage.</summary>
     public void PlayAttack()
     {
+        PlayAttack(attackDuration);
+    }
+
+    /// <summary>Plays one swing with a duration calculated from the server-supplied attack speed.</summary>
+    public void PlayAttack(float duration)
+    {
         if (!initialized) Initialize(visualAnchor != null ? visualAnchor : transform);
         if (swordPivot == null) return;
         attackElapsed = 0f;
+        activeAttackDuration = Mathf.Max(0.05f, duration);
         isAttacking = true;
         swordPivot.localRotation = swordRestRotation;
+    }
+
+    public void StopAttack()
+    {
+        isAttacking = false;
+        attackElapsed = 0f;
+        if (swordPivot != null)
+        {
+            swordPivot.localRotation = swordRestRotation;
+        }
     }
 
     private void Update()
@@ -44,7 +62,7 @@ public sealed class PlayerCombatVisuals : MonoBehaviour
         if (!isAttacking || swordPivot == null) return;
 
         attackElapsed += Time.deltaTime;
-        float progress = Mathf.Clamp01(attackElapsed / Mathf.Max(0.05f, attackDuration));
+        float progress = Mathf.Clamp01(attackElapsed / Mathf.Max(0.05f, activeAttackDuration));
         const float swingPortion = 0.42f;
         float amount = progress <= swingPortion
             ? Mathf.SmoothStep(0f, 1f, progress / swingPortion)
@@ -68,7 +86,8 @@ public sealed class PlayerCombatVisuals : MonoBehaviour
         swordPivot = pivot.transform;
         swordPivot.SetParent(visualAnchor, false);
         swordPivot.localPosition = new Vector3(0.57f, 0.16f, 0.09f);
-        swordPivot.localRotation = Quaternion.identity;
+        // Turn the broad face 90 degrees around vertical Y so the blade sits side-on to the capsule.
+        swordPivot.localRotation = Quaternion.Euler(0f, 90f, 0f);
         swordRestRotation = swordPivot.localRotation;
 
         Material steel = GetMaterial("Sword_Steel", new Color(0.72f, 0.77f, 0.81f), 0.78f, 0.72f);
@@ -99,7 +118,8 @@ public sealed class PlayerCombatVisuals : MonoBehaviour
         GameObject shield = new GameObject("Shield_Static");
         shield.transform.SetParent(visualAnchor, false);
         shield.transform.localPosition = new Vector3(-0.62f, -0.015f, 0.075f);
-        shield.transform.localRotation = Quaternion.identity;
+        // The shield plane is rotated edge-on to the capsule, facing outward from its left side.
+        shield.transform.localRotation = Quaternion.Euler(0f, 90f, 0f);
 
         Material wood = GetMaterial("Shield_Wood", new Color(0.31f, 0.13f, 0.045f), 0.03f, 0.28f);
         Material rim = GetMaterial("Shield_Rim", new Color(0.64f, 0.43f, 0.17f), 0.68f, 0.55f);
