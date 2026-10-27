@@ -76,11 +76,21 @@ public sealed class GameServerLoginUI : MonoBehaviour
     }
 
     [Serializable]
+    private sealed class WorldColliderData
+    {
+        public string shape;
+        public float radius;
+        public float height;
+        public WorldVector3 size;
+    }
+
+    [Serializable]
     private sealed class WorldPlayerData
     {
         public string playerId;
         public WorldVector3 position;
         public WorldQuaternion rotation;
+        public WorldColliderData collider;
     }
 
     [Serializable]
@@ -91,6 +101,7 @@ public sealed class GameServerLoginUI : MonoBehaviour
         public string name;
         public WorldVector3 position;
         public WorldQuaternion rotation;
+        public WorldColliderData collider;
         public int health;
         public int maxHealth;
         public bool alive;
@@ -154,8 +165,11 @@ public sealed class GameServerLoginUI : MonoBehaviour
         new Dictionary<string, Material>();
     private readonly Dictionary<string, Texture2D> _monsterTextures =
         new Dictionary<string, Texture2D>();
+    private readonly Dictionary<string, GameObject> _otherPlayerCollisionViews =
+        new Dictionary<string, GameObject>();
     private Terrain _worldTerrain;
     private Material _smileyFaceMaterial;
+    private Material _dogMuzzleMaterial;
 
     private TcpClient _client;
     private NetworkStream _stream;
@@ -259,6 +273,11 @@ public sealed class GameServerLoginUI : MonoBehaviour
         {
             Destroy(_smileyFaceMaterial);
             _smileyFaceMaterial = null;
+        }
+        if (_dogMuzzleMaterial != null)
+        {
+            Destroy(_dogMuzzleMaterial);
+            _dogMuzzleMaterial = null;
         }
 
         if (Instance == this)
@@ -655,6 +674,32 @@ public sealed class GameServerLoginUI : MonoBehaviour
                 {
                     Debug.Log("GameServer: server registered initial player position and rotation.");
                 }
+                else if (message.message == "server_collision_correction")
+                {
+                    if (_cachedPlayerController == null)
+                    {
+                        _cachedPlayerController = FindFirstObjectByType<PlayerController>();
+                    }
+                    if (_cachedPlayerController != null)
+                    {
+                        Quaternion correctedRotation = new Quaternion(
+                            message.rotationX, message.rotationY,
+                            message.rotationZ, message.rotationW);
+                        if (correctedRotation.x == 0f && correctedRotation.y == 0f &&
+                            correctedRotation.z == 0f && correctedRotation.w == 0f)
+                        {
+                            correctedRotation = _cachedPlayerController.transform.rotation;
+                        }
+                        else
+                        {
+                            correctedRotation.Normalize();
+                        }
+
+                        _cachedPlayerController.ApplyServerCollisionCorrection(
+                            new Vector3(message.x, message.y, message.z),
+                            correctedRotation);
+                    }
+                }
                 break;
 
             case "connection_closed":
@@ -777,6 +822,8 @@ public sealed class GameServerLoginUI : MonoBehaviour
 
     private void ApplyWorldSnapshot(ServerMessage message)
     {
+        ApplyOtherPlayerCollisionViews(message.players);
+
         WorldMonsterData[] monsters = message.monsters ?? Array.Empty<WorldMonsterData>();
         HashSet<string> visibleMonsterIDs = new HashSet<string>();
 
@@ -790,7 +837,8 @@ public sealed class GameServerLoginUI : MonoBehaviour
 
             visibleMonsterIDs.Add(monster.id);
             string templateID = monster.templateId ?? string.Empty;
-            float modelSize = templateID == "test-sphere-enemy" ? 1.4f : 1.2f;
+            // Both test monsters have two-metre collision bounds and two-metre visuals.
+            float modelSize = 2f;
             bool hasView = _monsterViews.TryGetValue(monster.id, out GameObject view) &&
                 view != null;
             bool templateChanged = _monsterTemplateIds.TryGetValue(monster.id, out string oldTemplate) &&
@@ -811,10 +859,34 @@ public sealed class GameServerLoginUI : MonoBehaviour
                 view.name = monster.name + " (ID " + monster.id + ")";
                 view.transform.localScale = Vector3.one * modelSize;
 
-                Collider collider = view.GetComponent<Collider>();
-                if (collider != null)
+                Collider existingCollider = view.GetComponent<Collider>();
+                if (templateID == "test-cube-enemy")
                 {
-                    Destroy(collider);
+                    BoxCollider box = existingCollider as BoxCollider;
+                    if (box == null)
+                    {
+                        if (existingCollider != null)
+                        {
+                            Destroy(existingCollider);
+                        }
+                        box = view.AddComponent<BoxCollider>();
+                    }
+                    box.center = Vector3.zero;
+                    box.size = Vector3.one;
+                    box.isTrigger = false;
+                }
+                else
+                {
+                    if (existingCollider != null)
+                    {
+                        Destroy(existingCollider);
+                    }
+                    CapsuleCollider cylinderProxy = view.AddComponent<CapsuleCollider>();
+                    cylinderProxy.direction = 1;
+                    cylinderProxy.center = Vector3.zero;
+                    cylinderProxy.radius = 0.5f;
+                    cylinderProxy.height = 1f;
+                    cylinderProxy.isTrigger = false;
                 }
 
                 Renderer renderer = view.GetComponent<Renderer>();
@@ -830,6 +902,10 @@ public sealed class GameServerLoginUI : MonoBehaviour
                 if (templateID == "test-sphere-enemy")
                 {
                     CreateSmileyFace(view);
+                }
+                else if (templateID == "test-cube-enemy")
+                {
+                    CreateDogAppearance(view);
                 }
                 CreateMonsterNameLabel(view, monster);
                 _monsterViews[monster.id] = view;
@@ -929,11 +1005,7 @@ public sealed class GameServerLoginUI : MonoBehaviour
         }
 
         bool isSmiley = templateID == "test-sphere-enemy";
-        Texture2D texture = isSmiley ? null : CreateWarningTexture();
-        if (texture != null)
-        {
-            texture.name = "Enemy1_WarningTexture";
-        }
+        Texture2D texture = null;
 
         Shader shader = Shader.Find("Universal Render Pipeline/Lit");
         if (shader == null)
@@ -955,9 +1027,11 @@ public sealed class GameServerLoginUI : MonoBehaviour
         }
 
         Material material = new Material(shader);
-        material.name = isSmiley ? "Enemy2_YellowSphereMaterial" : "Enemy1_WarningMaterial";
-        material.mainTexture = texture;
-        material.color = isSmiley ? new Color(1f, 0.84f, 0.02f) : Color.white;
+        material.name = isSmiley ? "Enemy2_YellowSphereMaterial" : "Enemy1_DogCoatMaterial";
+        material.mainTexture = null;
+        material.color = isSmiley
+            ? new Color(1f, 0.84f, 0.02f)
+            : new Color(0.58f, 0.34f, 0.16f);
 
         if (texture != null)
         {
@@ -996,35 +1070,48 @@ public sealed class GameServerLoginUI : MonoBehaviour
         return texture;
     }
 
-    private void CreateSmileyFace(GameObject view)
+    private Material GetOrCreateSolidMaterial(ref Material material, string materialName, Color color)
     {
-        if (_smileyFaceMaterial == null)
+        if (material != null)
         {
-            Shader shader = Shader.Find("Universal Render Pipeline/Lit");
-            if (shader == null)
-            {
-                shader = Shader.Find("Standard");
-            }
-            if (shader == null)
-            {
-                shader = Shader.Find("Unlit/Color");
-            }
-
-            if (shader == null)
-            {
-                Debug.LogWarning("GameServer: no compatible shader found for the smiley face.");
-                return;
-            }
-
-            _smileyFaceMaterial = new Material(shader)
-            {
-                name = "Enemy2_FaceFeatureMaterial",
-                color = new Color(0.055f, 0.045f, 0.02f)
-            };
+            return material;
         }
 
-        // The face is built in the monster's local space and never billboarded.
-        // Unity's sphere has a base radius of 0.5; these points sit on its +Z hemisphere.
+        Shader shader = Shader.Find("Universal Render Pipeline/Lit");
+        if (shader == null)
+        {
+            shader = Shader.Find("Standard");
+        }
+        if (shader == null)
+        {
+            shader = Shader.Find("Unlit/Color");
+        }
+        if (shader == null)
+        {
+            Debug.LogWarning("GameServer: no compatible shader found for " + materialName + ".");
+            return null;
+        }
+
+        material = new Material(shader)
+        {
+            name = materialName,
+            color = color
+        };
+        return material;
+    }
+
+    private void CreateSmileyFace(GameObject view)
+    {
+        _smileyFaceMaterial = GetOrCreateSolidMaterial(
+            ref _smileyFaceMaterial,
+            "Enemy_FacialDetailMaterial",
+            new Color(0.055f, 0.045f, 0.02f));
+        if (_smileyFaceMaterial == null)
+        {
+            return;
+        }
+
+        // Features sit on the sphere's local +Z hemisphere and inherit only server rotation.
         CreateSmileyDot(view.transform, "LeftEye", new Vector3(-0.14f, 0.12f, 0.463f), 0.075f);
         CreateSmileyDot(view.transform, "RightEye", new Vector3(0.14f, 0.12f, 0.463f), 0.075f);
 
@@ -1064,12 +1151,181 @@ public sealed class GameServerLoginUI : MonoBehaviour
         }
     }
 
+    private void CreateDogAppearance(GameObject view)
+    {
+        Material dark = GetOrCreateSolidMaterial(
+            ref _smileyFaceMaterial,
+            "Enemy_FacialDetailMaterial",
+            new Color(0.055f, 0.035f, 0.02f));
+        Material muzzle = GetOrCreateSolidMaterial(
+            ref _dogMuzzleMaterial,
+            "Enemy_DogMuzzleMaterial",
+            new Color(0.88f, 0.66f, 0.40f));
+        if (dark == null || muzzle == null)
+        {
+            return;
+        }
+
+        // The root cube is 2 x 2 x 2 metres. Every feature is a child in the
+        // dog's local coordinates: +Z is the front, -Z is the tail/back.
+        CreateDogPart(view.transform, "DogEarLeft", PrimitiveType.Sphere,
+            new Vector3(-0.32f, 0.34f, 0.50f), new Vector3(0.24f, 0.34f, 0.14f), dark);
+        CreateDogPart(view.transform, "DogEarRight", PrimitiveType.Sphere,
+            new Vector3(0.32f, 0.34f, 0.50f), new Vector3(0.24f, 0.34f, 0.14f), dark);
+
+        CreateDogPart(view.transform, "DogEyeLeft", PrimitiveType.Sphere,
+            new Vector3(-0.22f, 0.15f, 0.515f), new Vector3(0.13f, 0.13f, 0.08f), dark);
+        CreateDogPart(view.transform, "DogEyeRight", PrimitiveType.Sphere,
+            new Vector3(0.22f, 0.15f, 0.515f), new Vector3(0.13f, 0.13f, 0.08f), dark);
+
+        CreateDogPart(view.transform, "DogMuzzle", PrimitiveType.Sphere,
+            new Vector3(0f, -0.04f, 0.515f), new Vector3(0.42f, 0.25f, 0.13f), muzzle);
+        CreateDogPart(view.transform, "DogNose", PrimitiveType.Sphere,
+            new Vector3(0f, -0.025f, 0.58f), new Vector3(0.13f, 0.105f, 0.07f), dark);
+        CreateDogPart(view.transform, "DogMouth", PrimitiveType.Cube,
+            new Vector3(0f, -0.19f, 0.53f), new Vector3(0.20f, 0.035f, 0.035f), dark);
+
+        // Two short paws on each side hint at four legs without exceeding the simple box collider.
+        for (int side = -1; side <= 1; side += 2)
+        {
+            for (int alongBody = -1; alongBody <= 1; alongBody += 2)
+            {
+                CreateDogPart(view.transform,
+                    "DogPaw_" + side + "_" + alongBody,
+                    PrimitiveType.Sphere,
+                    new Vector3(side * 0.515f, -0.30f, alongBody * 0.25f),
+                    new Vector3(0.22f, 0.30f, 0.22f),
+                    dark);
+            }
+        }
+
+        GameObject tail = CreateDogPart(view.transform, "DogTail", PrimitiveType.Capsule,
+            new Vector3(0f, 0.17f, -0.55f), new Vector3(0.14f, 0.42f, 0.14f), dark);
+        if (tail != null)
+        {
+            tail.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
+        }
+    }
+
+    private GameObject CreateDogPart(
+        Transform parent,
+        string partName,
+        PrimitiveType primitiveType,
+        Vector3 localPosition,
+        Vector3 worldSize,
+        Material material)
+    {
+        GameObject part = GameObject.CreatePrimitive(primitiveType);
+        part.name = partName;
+        part.transform.SetParent(parent, false);
+        part.transform.localPosition = localPosition;
+        // The parent dog is scaled to two metres; divide child dimensions by that scale
+        // to keep the decorative parts at the intended world sizes.
+        part.transform.localScale = worldSize / 2f;
+
+        Collider collider = part.GetComponent<Collider>();
+        if (collider != null)
+        {
+            Destroy(collider);
+        }
+
+        Renderer renderer = part.GetComponent<Renderer>();
+        if (renderer != null)
+        {
+            renderer.sharedMaterial = material;
+        }
+        return part;
+    }
+
+    private void ApplyOtherPlayerCollisionViews(WorldPlayerData[] players)
+    {
+        HashSet<string> visiblePlayerIDs = new HashSet<string>();
+        if (players != null)
+        {
+            foreach (WorldPlayerData player in players)
+            {
+                if (player == null || string.IsNullOrWhiteSpace(player.playerId) ||
+                    player.playerId == _authenticatedUsername || player.position == null)
+                {
+                    continue;
+                }
+
+                visiblePlayerIDs.Add(player.playerId);
+                if (!_otherPlayerCollisionViews.TryGetValue(player.playerId, out GameObject view) ||
+                    view == null)
+                {
+                    view = GameObject.CreatePrimitive(PrimitiveType.Capsule);
+                    view.name = "CollisionProxy_Player_" + player.playerId;
+                    Renderer renderer = view.GetComponent<Renderer>();
+                    if (renderer != null)
+                    {
+                        renderer.enabled = false;
+                    }
+
+                    CapsuleCollider capsule = view.GetComponent<CapsuleCollider>();
+                    if (capsule == null)
+                    {
+                        capsule = view.AddComponent<CapsuleCollider>();
+                    }
+                    capsule.direction = 1;
+                    capsule.center = Vector3.zero;
+                    capsule.radius = 0.5f;
+                    capsule.height = 2f;
+                    capsule.isTrigger = false;
+                    _otherPlayerCollisionViews[player.playerId] = view;
+                }
+
+                float radius = player.collider != null && player.collider.radius > 0f
+                    ? player.collider.radius
+                    : 0.25f;
+                float height = player.collider != null && player.collider.height > 0f
+                    ? player.collider.height
+                    : 2f;
+                view.transform.localScale = new Vector3(radius * 2f, height * 0.5f, radius * 2f);
+                view.transform.position = new Vector3(
+                    player.position.x,
+                    player.position.y + height * 0.5f,
+                    player.position.z);
+
+                if (player.rotation != null)
+                {
+                    Quaternion rotation = new Quaternion(
+                        player.rotation.x, player.rotation.y, player.rotation.z, player.rotation.w);
+                    if (rotation.x * rotation.x + rotation.y * rotation.y +
+                        rotation.z * rotation.z + rotation.w * rotation.w > 0.0001f)
+                    {
+                        rotation.Normalize();
+                        view.transform.rotation = Quaternion.Euler(0f, rotation.eulerAngles.y, 0f);
+                    }
+                }
+            }
+        }
+
+        List<string> stalePlayerIDs = new List<string>();
+        foreach (KeyValuePair<string, GameObject> pair in _otherPlayerCollisionViews)
+        {
+            if (!visiblePlayerIDs.Contains(pair.Key))
+            {
+                if (pair.Value != null)
+                {
+                    Destroy(pair.Value);
+                }
+                stalePlayerIDs.Add(pair.Key);
+            }
+        }
+
+        foreach (string staleID in stalePlayerIDs)
+        {
+            _otherPlayerCollisionViews.Remove(staleID);
+        }
+    }
+
     private static void CreateMonsterNameLabel(GameObject view, WorldMonsterData monster)
     {
         GameObject labelObject = new GameObject("NameLabel");
         labelObject.transform.SetParent(view.transform, false);
 
-        float modelSize = monster.templateId == "test-sphere-enemy" ? 1.4f : 1.2f;
+        const float modelSize = 2f;
         labelObject.transform.localPosition = new Vector3(
             0f, (modelSize * 0.5f + 0.45f) / modelSize, 0f);
         labelObject.transform.localScale = Vector3.one / modelSize;
@@ -1173,6 +1429,15 @@ public sealed class GameServerLoginUI : MonoBehaviour
         }
         _monsterViews.Clear();
         _monsterTemplateIds.Clear();
+
+        foreach (GameObject view in _otherPlayerCollisionViews.Values)
+        {
+            if (view != null)
+            {
+                Destroy(view);
+            }
+        }
+        _otherPlayerCollisionViews.Clear();
         _lastSnapshotSummary = string.Empty;
     }
 
