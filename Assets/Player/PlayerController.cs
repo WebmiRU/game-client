@@ -325,8 +325,12 @@ public class PlayerController : MonoBehaviour
             _meleeTarget != null &&
             System.String.Equals(_meleeTarget.TargetType, requestedType, System.StringComparison.OrdinalIgnoreCase) &&
             System.String.Equals(_meleeTarget.TargetID, requestedID, System.StringComparison.Ordinal);
+        bool serverTargetMatchesRequest =
+            string.IsNullOrEmpty(targetType) ||
+            (System.String.Equals(targetType, requestedType, System.StringComparison.OrdinalIgnoreCase) &&
+             System.String.Equals(targetId, requestedID, System.StringComparison.Ordinal));
 
-        if (!stillAttackingThisTarget)
+        if (!stillAttackingThisTarget || !serverTargetMatchesRequest)
         {
             return;
         }
@@ -337,6 +341,7 @@ public class PlayerController : MonoBehaviour
                 !float.IsNaN(serverAttackSpeed) && !float.IsInfinity(serverAttackSpeed)
                     ? Mathf.Clamp(serverAttackSpeed, 0.1f, 10f)
                     : GetCurrentServerAttackSpeed();
+            _nextAttackAttemptTime = Time.time + 1f / attacksPerSecond;
             float animationDuration = Mathf.Min(
                 meleeAttackAnimationMaxDuration,
                 (1f / attacksPerSecond) * 0.9f);
