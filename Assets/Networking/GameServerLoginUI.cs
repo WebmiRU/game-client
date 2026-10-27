@@ -368,7 +368,7 @@ public sealed class GameServerLoginUI : MonoBehaviour
 
                 if (line == null)
                 {
-                    QueueIncomingMessage(operationId, "{\\"type\\":\\"connection_closed\\"}");
+                    QueueIncomingMessage(operationId, "{\"type\":\"connection_closed\"}");
                     return;
                 }
 
