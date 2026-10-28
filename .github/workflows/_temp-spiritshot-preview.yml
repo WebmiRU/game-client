@@ -1,0 +1,29 @@
+name: Temporary spiritshot reference preview
+on:
+  push:
+    paths:
+      - '.github/workflows/_temp-spiritshot-preview.yml'
+permissions:
+  contents: read
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create compact image preview for inspection
+        run: |
+          python -m pip install --quiet pillow
+          python - <<'PY'
+          from PIL import Image
+          import base64, io
+          source = Image.open("Assets/References/spiritshot.png").convert("RGBA")
+          source.thumbnail((320, 320), Image.Resampling.LANCZOS)
+          background = Image.new("RGBA", source.size, (35, 35, 39, 255))
+          background.alpha_composite(source)
+          output = io.BytesIO()
+          background.convert("RGB").save(output, format="JPEG", quality=82, optimize=True)
+          encoded = base64.b64encode(output.getvalue()).decode("ascii")
+          print("SPIRITSHOT_PREVIEW_BEGIN")
+          print(encoded)
+          print("SPIRITSHOT_PREVIEW_END")
+          PY
