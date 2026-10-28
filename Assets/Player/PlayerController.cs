@@ -18,6 +18,7 @@ public class PlayerController : MonoBehaviour
     private Terrain _terrain;
     private float _verticalVelocity;
     private Vector3 _targetPosition;
+    private string _groundItemMoveTargetID = string.Empty;
     private bool _hasMoveTarget;
     private GameObject _moveTargetInstance;
     private WorldTargetable _hoveredWorldTarget;
@@ -1035,6 +1036,25 @@ public class PlayerController : MonoBehaviour
         SyncNetworkStateIfNeeded();
     }
 
+    public void CancelGroundItemMovement(string itemID)
+    {
+        if (string.IsNullOrWhiteSpace(itemID) || _groundItemMoveTargetID != itemID)
+        {
+            return;
+        }
+
+        _groundItemMoveTargetID = string.Empty;
+        _hasMoveTarget = false;
+        if (_moveTargetInstance != null)
+        {
+            _moveTargetInstance.SetActive(false);
+        }
+
+        _hasSentNetworkState = false;
+        _nextNetworkSyncTime = 0f;
+        _targetPosition = transform.position;
+    }
+
     private void LateUpdate()
     {
         if (_playerVisualTransform == null || characterController == null)
@@ -1209,6 +1229,10 @@ public class PlayerController : MonoBehaviour
                 System.String.Equals(clickedTarget.TargetType, "player", System.StringComparison.OrdinalIgnoreCase);
             bool isGroundItem = System.String.Equals(
                 clickedTarget.TargetType, "item", System.StringComparison.OrdinalIgnoreCase);
+            if (!isGroundItem)
+            {
+                _groundItemMoveTargetID = string.Empty;
+            }
 
             if (alreadySelected && isAttackableTarget)
             {
@@ -1229,6 +1253,7 @@ public class PlayerController : MonoBehaviour
                     // The server only transfers it to inventory after the accepted player
                     // position enters the 0.5 m pickup radius.
                     CancelMeleeAttack();
+                    _groundItemMoveTargetID = clickedTarget.TargetID;
                     Vector3 itemPosition = clickedTarget.transform.position;
                     if (TryGetTerrainSurfaceY(itemPosition, out float itemGroundY))
                     {
@@ -1254,6 +1279,17 @@ public class PlayerController : MonoBehaviour
 
             return;
         }
+
+        // Clicking terrain cancels a pending pickup so walking past the item does not collect it.
+        if (_gameServerLogin == null)
+        {
+            _gameServerLogin = GameServerLoginUI.Instance;
+        }
+        if (_gameServerLogin != null)
+        {
+            _gameServerLogin.CancelGroundItemPickupIntent();
+        }
+        _groundItemMoveTargetID = string.Empty;
 
         // Clicking the terrain exits combat mode and issues a normal move order.
         CancelMeleeAttack();
