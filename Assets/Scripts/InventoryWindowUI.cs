@@ -201,25 +201,10 @@ public sealed class InventoryWindowUI : MonoBehaviour
 
         Rect header = new Rect(surface.x + 2f * scale, surface.y + 2f * scale,
             surface.width - 4f * scale, 50f * scale);
-        DrawGuiRect(header, new Color(0.105f, 0.085f, 0.058f, 1f));
-        DrawGuiRect(new Rect(header.x + 30f * scale, header.y + 1f * scale,
-            header.width - 60f * scale, 1f * scale), new Color(0.58f, 0.44f, 0.25f, 1f));
-        DrawGuiRect(new Rect(header.x + 18f * scale, header.yMax - 2f * scale,
-            header.width - 36f * scale, 1f * scale), new Color(0.25f, 0.19f, 0.12f, 1f));
-
-        Rect titlePlate = new Rect(header.center.x - 166f * scale, header.y + 5f * scale,
-            332f * scale, 39f * scale);
-        DrawGuiRect(titlePlate, new Color(0.045f, 0.037f, 0.026f, 1f));
-        DrawGuiRect(InsetGuiRect(titlePlate, 1f * scale), new Color(0.42f, 0.31f, 0.18f, 1f));
-        DrawGuiRect(InsetGuiRect(titlePlate, 2.5f * scale), new Color(0.09f, 0.07f, 0.045f, 1f));
-        DrawGuiDiamond(new Vector2(titlePlate.x + 8f * scale, titlePlate.center.y), 9f * scale,
-            new Color(0.72f, 0.55f, 0.29f, 1f));
-        DrawGuiDiamond(new Vector2(titlePlate.xMax - 8f * scale, titlePlate.center.y), 9f * scale,
-            new Color(0.72f, 0.55f, 0.29f, 1f));
-
-        GUI.Label(new Rect(titlePlate.x + 12f * scale, titlePlate.y + 1f * scale,
-            titlePlate.width - 24f * scale, titlePlate.height - 2f * scale),
-            "Инвентарь", _guiTitleStyle);
+        DrawGuiRect(header, new Color(0.072f, 0.057f, 0.039f, 1f));
+        DrawTopHeaderOrnament(header, scale);
+        GUI.Label(new Rect(header.center.x - 118f * scale, header.y + 16f * scale,
+            236f * scale, 28f * scale), "Инвентарь", _guiTitleStyle);
 
         Rect dragRect = new Rect(header.x + 8f * scale, header.y + 1f * scale,
             header.width - 82f * scale, header.height - 2f * scale);
@@ -546,36 +531,143 @@ public sealed class InventoryWindowUI : MonoBehaviour
 
     private void DrawOrnateFrame(Rect rect, float scale)
     {
-        DrawGuiRect(rect, new Color(0.008f, 0.007f, 0.005f, 1f));
-        DrawGuiRect(InsetGuiRect(rect, 1f * scale), new Color(0.68f, 0.50f, 0.27f, 1f));
-        DrawGuiRect(InsetGuiRect(rect, 2.5f * scale), new Color(0.075f, 0.055f, 0.033f, 1f));
-        DrawGuiRect(InsetGuiRect(rect, 4f * scale), new Color(0.40f, 0.30f, 0.17f, 1f));
-        DrawGuiRect(InsetGuiRect(rect, 5.5f * scale), new Color(0.022f, 0.018f, 0.012f, 1f));
-        DrawGuiRect(InsetGuiRect(rect, 7f * scale), new Color(0.20f, 0.15f, 0.09f, 1f));
-        DrawGuiRect(InsetGuiRect(rect, 9f * scale), new Color(0.085f, 0.074f, 0.058f, 1f));
+        // Dark embossed frame with the fine bronze double edging used by the reference.
+        DrawGuiRect(rect, new Color(0.010f, 0.008f, 0.006f, 1f));
+        DrawGuiRect(InsetGuiRect(rect, 1.0f * scale), new Color(0.43f, 0.33f, 0.22f, 1f));
+        DrawGuiRect(InsetGuiRect(rect, 2.4f * scale), new Color(0.025f, 0.020f, 0.014f, 1f));
+        DrawGuiRect(InsetGuiRect(rect, 4.0f * scale), new Color(0.25f, 0.19f, 0.12f, 1f));
+        DrawGuiRect(InsetGuiRect(rect, 5.2f * scale), new Color(0.012f, 0.010f, 0.007f, 1f));
+        DrawGuiRect(InsetGuiRect(rect, 7.0f * scale), new Color(0.15f, 0.115f, 0.075f, 1f));
+        DrawGuiRect(InsetGuiRect(rect, 8.5f * scale), new Color(0.085f, 0.074f, 0.058f, 1f));
 
-        Rect inset = InsetGuiRect(rect, 10f * scale);
-        DrawGuiRect(new Rect(inset.x + 24f * scale, inset.y, inset.width - 48f * scale,
-            1f * scale), new Color(0.73f, 0.58f, 0.35f, 0.72f));
-        DrawGuiRect(new Rect(inset.x + 24f * scale, inset.yMax - 1f * scale,
-            inset.width - 48f * scale, 1f * scale), new Color(0.015f, 0.012f, 0.008f, 1f));
+        Rect rails = InsetGuiRect(rect, 7.5f * scale);
+        float thin = Mathf.Max(1f, 1.05f * scale);
+        // Rails deliberately stop short of the corner ornaments, as they do in the game reference.
+        DrawGuiLine(new Vector2(rails.x + 30f * scale, rails.y + 1f * scale),
+            new Vector2(rails.center.x - 68f * scale, rails.y + 1f * scale), thin,
+            new Color(0.65f, 0.50f, 0.32f, 0.94f));
+        DrawGuiLine(new Vector2(rails.center.x + 68f * scale, rails.y + 1f * scale),
+            new Vector2(rails.xMax - 30f * scale, rails.y + 1f * scale), thin,
+            new Color(0.65f, 0.50f, 0.32f, 0.94f));
+        DrawGuiLine(new Vector2(rails.x + 30f * scale, rails.yMax - 1f * scale),
+            new Vector2(rails.center.x - 36f * scale, rails.yMax - 1f * scale), thin,
+            new Color(0.33f, 0.25f, 0.16f, 0.92f));
+        DrawGuiLine(new Vector2(rails.center.x + 36f * scale, rails.yMax - 1f * scale),
+            new Vector2(rails.xMax - 30f * scale, rails.yMax - 1f * scale), thin,
+            new Color(0.33f, 0.25f, 0.16f, 0.92f));
 
-        DrawOrnateCorner(new Vector2(rect.x + 12f * scale, rect.y + 12f * scale), scale);
-        DrawOrnateCorner(new Vector2(rect.xMax - 12f * scale, rect.y + 12f * scale), scale);
-        DrawOrnateCorner(new Vector2(rect.x + 12f * scale, rect.yMax - 12f * scale), scale);
-        DrawOrnateCorner(new Vector2(rect.xMax - 12f * scale, rect.yMax - 12f * scale), scale);
+        DrawGuiLine(new Vector2(rails.x + 1f * scale, rails.y + 30f * scale),
+            new Vector2(rails.x + 1f * scale, rails.yMax - 30f * scale), thin,
+            new Color(0.48f, 0.37f, 0.24f, 0.85f));
+        DrawGuiLine(new Vector2(rails.xMax - 1f * scale, rails.y + 30f * scale),
+            new Vector2(rails.xMax - 1f * scale, rails.yMax - 30f * scale), thin,
+            new Color(0.48f, 0.37f, 0.24f, 0.85f));
+
+        DrawOrnateCorner(new Vector2(rect.x + 15f * scale, rect.y + 16f * scale), scale, false, false);
+        DrawOrnateCorner(new Vector2(rect.xMax - 15f * scale, rect.y + 16f * scale), scale, true, false);
+        DrawOrnateCorner(new Vector2(rect.x + 15f * scale, rect.yMax - 16f * scale), scale, false, true);
+        DrawOrnateCorner(new Vector2(rect.xMax - 15f * scale, rect.yMax - 16f * scale), scale, true, true);
+
+        // Side filigree stays small and thin, rather than looking like large gold diamonds.
+        DrawGuiDiamond(new Vector2(rect.x + 5.5f * scale, rect.center.y), 5.5f * scale,
+            new Color(0.56f, 0.42f, 0.26f, 0.95f));
+        DrawGuiDiamond(new Vector2(rect.xMax - 5.5f * scale, rect.center.y), 5.5f * scale,
+            new Color(0.56f, 0.42f, 0.26f, 0.95f));
+        DrawGuiDiamond(new Vector2(rect.center.x, rect.yMax - 6.5f * scale), 7f * scale,
+            new Color(0.52f, 0.39f, 0.23f, 1f));
     }
 
-    private void DrawOrnateCorner(Vector2 center, float scale)
+    private void DrawOrnateCorner(Vector2 center, float scale, bool right, bool bottom)
     {
-        DrawGuiDiamond(center, 23f * scale, new Color(0.015f, 0.012f, 0.008f, 1f));
-        DrawGuiDiamond(center, 17f * scale, new Color(0.54f, 0.39f, 0.20f, 1f));
-        DrawGuiDiamond(center, 11f * scale, new Color(0.10f, 0.075f, 0.043f, 1f));
-        DrawGuiDiamond(center, 5f * scale, new Color(0.82f, 0.64f, 0.35f, 1f));
-        DrawGuiRect(new Rect(center.x + 8f * scale, center.y - 1f * scale,
-            8f * scale, 2f * scale), new Color(0.57f, 0.42f, 0.23f, 0.8f));
-        DrawGuiRect(new Rect(center.x - 1f * scale, center.y + 8f * scale,
-            2f * scale, 8f * scale), new Color(0.57f, 0.42f, 0.23f, 0.8f));
+        float sx = right ? -1f : 1f;
+        float sy = bottom ? -1f : 1f;
+        Vector2 P(float dx, float dy) => new Vector2(center.x + dx * sx * scale, center.y + dy * sy * scale);
+
+        Color shadow = new Color(0.006f, 0.005f, 0.003f, 1f);
+        Color darkBronze = new Color(0.24f, 0.18f, 0.11f, 1f);
+        Color bronze = new Color(0.57f, 0.43f, 0.27f, 1f);
+        Color highlight = new Color(0.76f, 0.61f, 0.40f, 0.95f);
+
+        // Curled corner strips are assembled from cubic curves, not blocky rotated squares.
+        DrawGuiBezier(P(0f, 30f), P(-1f, 15f), P(3f, 5f), P(18f, 0f), 4.3f * scale, shadow);
+        DrawGuiBezier(P(0f, 30f), P(-1f, 15f), P(3f, 5f), P(18f, 0f), 2.2f * scale, darkBronze);
+        DrawGuiBezier(P(1f, 27f), P(0f, 15f), P(5f, 7f), P(18f, 2f), 1.0f * scale, highlight);
+
+        DrawGuiBezier(P(2f, 26f), P(12f, 28f), P(12f, 16f), P(18f, 10f), 3.7f * scale, shadow);
+        DrawGuiBezier(P(2f, 26f), P(12f, 28f), P(12f, 16f), P(18f, 10f), 1.8f * scale, bronze);
+        DrawGuiBezier(P(4f, 24f), P(10f, 25f), P(11f, 17f), P(16f, 11f), 0.9f * scale, highlight);
+
+        DrawGuiBezier(P(7f, 29f), P(17f, 24f), P(22f, 15f), P(28f, 14f), 3.0f * scale, shadow);
+        DrawGuiBezier(P(7f, 29f), P(17f, 24f), P(22f, 15f), P(28f, 14f), 1.3f * scale, bronze);
+        DrawGuiDiamond(P(3f, 3f), 5.5f * scale, darkBronze);
+        DrawGuiDiamond(P(3f, 3f), 2.5f * scale, highlight);
+    }
+
+    private void DrawTopHeaderOrnament(Rect header, float scale)
+    {
+        float y = header.y + 11f * scale;
+        float centerX = header.center.x;
+        Color shadow = new Color(0.008f, 0.006f, 0.004f, 1f);
+        Color bronze = new Color(0.47f, 0.34f, 0.20f, 1f);
+        Color highlight = new Color(0.76f, 0.61f, 0.40f, 1f);
+
+        DrawGuiBezier(new Vector2(centerX, y + 13f * scale),
+            new Vector2(centerX - 24f * scale, y + 16f * scale),
+            new Vector2(centerX - 43f * scale, y - 4f * scale),
+            new Vector2(centerX - 83f * scale, y + 1f * scale), 4.0f * scale, shadow);
+        DrawGuiBezier(new Vector2(centerX, y + 13f * scale),
+            new Vector2(centerX + 24f * scale, y + 16f * scale),
+            new Vector2(centerX + 43f * scale, y - 4f * scale),
+            new Vector2(centerX + 83f * scale, y + 1f * scale), 4.0f * scale, shadow);
+        DrawGuiBezier(new Vector2(centerX, y + 12f * scale),
+            new Vector2(centerX - 24f * scale, y + 15f * scale),
+            new Vector2(centerX - 43f * scale, y - 5f * scale),
+            new Vector2(centerX - 83f * scale, y), 1.7f * scale, bronze);
+        DrawGuiBezier(new Vector2(centerX, y + 12f * scale),
+            new Vector2(centerX + 24f * scale, y + 15f * scale),
+            new Vector2(centerX + 43f * scale, y - 5f * scale),
+            new Vector2(centerX + 83f * scale, y), 1.7f * scale, bronze);
+        DrawGuiBezier(new Vector2(centerX - 82f * scale, y + 1f * scale),
+            new Vector2(centerX - 120f * scale, y + 5f * scale),
+            new Vector2(centerX - 136f * scale, y - 4f * scale),
+            new Vector2(centerX - 155f * scale, y + 1f * scale), 1.2f * scale, bronze);
+        DrawGuiBezier(new Vector2(centerX + 82f * scale, y + 1f * scale),
+            new Vector2(centerX + 120f * scale, y + 5f * scale),
+            new Vector2(centerX + 136f * scale, y - 4f * scale),
+            new Vector2(centerX + 155f * scale, y + 1f * scale), 1.2f * scale, bronze);
+
+        DrawGuiDiamond(new Vector2(centerX, y + 2f * scale), 17f * scale, shadow);
+        DrawGuiDiamond(new Vector2(centerX, y + 2f * scale), 12f * scale, bronze);
+        DrawGuiDiamond(new Vector2(centerX, y + 2f * scale), 6f * scale, highlight);
+    }
+
+    private void DrawGuiLine(Vector2 from, Vector2 to, float thickness, Color color)
+    {
+        float length = Vector2.Distance(from, to);
+        if (length < 0.5f || thickness <= 0f) return;
+        Vector2 center = (from + to) * 0.5f;
+        Rect line = new Rect(center.x - length * 0.5f, center.y - thickness * 0.5f, length, thickness);
+        Matrix4x4 previous = GUI.matrix;
+        GUIUtility.RotateAroundPivot(Mathf.Atan2(to.y - from.y, to.x - from.x) * Mathf.Rad2Deg, center);
+        DrawGuiRect(line, color);
+        GUI.matrix = previous;
+    }
+
+    private void DrawGuiBezier(Vector2 p0, Vector2 p1, Vector2 p2, Vector2 p3, float thickness, Color color)
+    {
+        const int segments = 18;
+        Vector2 previous = p0;
+        for (int i = 1; i <= segments; i++)
+        {
+            float t = i / (float)segments;
+            float u = 1f - t;
+            Vector2 point = u * u * u * p0 +
+                3f * u * u * t * p1 +
+                3f * u * t * t * p2 +
+                t * t * t * p3;
+            DrawGuiLine(previous, point, thickness, color);
+            previous = point;
+        }
     }
 
     private void DrawGuiDiamond(Vector2 center, float size, Color color)
