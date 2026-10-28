@@ -1736,13 +1736,16 @@ public sealed class GameServerLoginUI : MonoBehaviour
             }
 
             const float itemSize = 0.35f;
+            // Ground-item positions are server-authoritative. Do not overwrite the server's Y
+            // with a local Terrain sample: mismatched Terrain transforms can bury small models.
             float baseY = item.position.y;
-            if (TryGetTerrainSurfaceY(item.position.x, item.position.z, out float terrainY)) baseY = terrainY;
 
             if (isSoulshot)
             {
                 view.transform.localScale = Vector3.one;
-                view.transform.position = new Vector3(item.position.x, baseY + 0.265f, item.position.z);
+                // The horizontal braid reaches about 0.265 world units from the centre.
+                // Keep an additional 3.5 cm clearance so the metal does not clip into the ground.
+                view.transform.position = new Vector3(item.position.x, baseY + 0.30f, item.position.z);
                 view.transform.rotation = Quaternion.Euler(0f, 0f, 90f);
             }
             else
