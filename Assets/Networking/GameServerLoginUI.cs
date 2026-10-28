@@ -1718,7 +1718,7 @@ public sealed class GameServerLoginUI : MonoBehaviour
                 {
                     view = new GameObject("GroundItem_" + item.id);
                     SphereCollider itemCollider = view.AddComponent<SphereCollider>();
-                    itemCollider.radius = 0.27f;
+                    itemCollider.radius = 0.42f;
                     view.AddComponent<SoulshotVisual>().Configure(item.itemTemplate);
                 }
                 else
@@ -1742,8 +1742,8 @@ public sealed class GameServerLoginUI : MonoBehaviour
             if (isSoulshot)
             {
                 view.transform.localScale = Vector3.one;
-                view.transform.position = new Vector3(item.position.x, baseY + 0.25f, item.position.z);
-                view.transform.rotation = Quaternion.Euler(12f, 0f, 68f);
+                view.transform.position = new Vector3(item.position.x, baseY + 0.30f, item.position.z);
+                view.transform.rotation = Quaternion.Euler(0f, 0f, 80f);
             }
             else
             {

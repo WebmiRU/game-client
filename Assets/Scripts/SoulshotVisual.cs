@@ -28,7 +28,7 @@ public sealed class SoulshotVisual : MonoBehaviour
 
         modelRoot = new GameObject("Soulshot_D_3D_Model");
         modelRoot.transform.SetParent(transform, false);
-        modelRoot.transform.localScale = Vector3.one * 0.46f;
+        modelRoot.transform.localScale = Vector3.one * 0.82f;
 
         AddPart("BlueGlassCore", coreMesh, coreMaterial, Vector3.zero, false);
         AddPart("OuterGlassCapsule", glassMesh, glassMaterial, Vector3.zero, false);
