@@ -1829,8 +1829,9 @@ public sealed class GameServerLoginUI : MonoBehaviour
             // Always ground soulshots on the client's actual Terrain surface; never
             // let the server Y coordinate pull a visible drop below that surface.
             float baseY = item.position.y;
+            float localGroundY = 0f;
             bool hasClientGround = isSoulshot &&
-                TryGetTerrainSurfaceY(item.position.x, item.position.z, out float localGroundY);
+                TryGetTerrainSurfaceY(item.position.x, item.position.z, out localGroundY);
             if (hasClientGround)
             {
                 baseY = localGroundY;
