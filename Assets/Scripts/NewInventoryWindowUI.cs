@@ -48,11 +48,17 @@ public sealed class NewInventoryWindowUI : MonoBehaviour
             Debug.LogError("NewInventoryWindowUI: cannot load Assets/Resources/NewInventoryFrame.png.", this);
         }
 
-        _blueBackgroundTexture = Resources.Load<Texture2D>("NewInventoryBackgroundMask");
-        if (_blueBackgroundTexture == null)
+        // One solid pixel is stretched only across the inner opening of the frame.
+        // No mask image is needed; the frame itself remains the unchanged top layer.
+        _blueBackgroundTexture = new Texture2D(1, 1, TextureFormat.RGBA32, false)
         {
-            Debug.LogError("NewInventoryWindowUI: cannot load Assets/Resources/NewInventoryBackgroundMask.png.", this);
-        }
+            name = "NewInventoryDarkBlueBackground",
+            hideFlags = HideFlags.HideAndDontSave,
+            filterMode = FilterMode.Point,
+            wrapMode = TextureWrapMode.Clamp
+        };
+        _blueBackgroundTexture.SetPixel(0, 0, Color.white);
+        _blueBackgroundTexture.Apply(false, true);
         Debug.Log("NewInventoryWindowUI: initialized image frame and translucent dark-blue background.", this);
     }
 
@@ -112,12 +118,18 @@ public sealed class NewInventoryWindowUI : MonoBehaviour
 
         Color previousColor = GUI.color;
 
-        // The mask was derived from the actual frame alpha silhouette.
-        // Tinting its white interior keeps the blue precisely within the frame.
+        // The frame is 640x360. This inset matches its visible inner opening;
+        // the blue is a plain rectangle, not a separate polygon or mask image.
+        Rect backgroundRect = new Rect(
+            frameRect.x + frameRect.width * (31f / 640f),
+            frameRect.y + frameRect.height * (44f / 360f),
+            frameRect.width * (578f / 640f),
+            frameRect.height * (274f / 360f));
+
         if (_blueBackgroundTexture != null)
         {
             GUI.color = new Color(0.012f, 0.045f, 0.15f, 0.80f);
-            GUI.DrawTexture(frameRect, _blueBackgroundTexture, ScaleMode.StretchToFill, true);
+            GUI.DrawTexture(backgroundRect, _blueBackgroundTexture, ScaleMode.StretchToFill, true);
         }
 
         if (_frameTexture != null)
