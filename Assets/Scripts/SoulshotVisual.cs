@@ -3,9 +3,8 @@ using UnityEngine;
 using UnityEngine.Rendering;
 
 /// <summary>
-/// Procedural low-poly model for the blue D-grade Soulshot reference.
-/// A single smooth capsule mesh with one dark-blue metallic texture containing the silver diamond weave.
-/// No particles, bloom, aura or billboard glow are created.
+/// Procedural model for the blue D-grade Soulshot.
+/// The capsule uses a glossy dark-blue enamel texture and a restrained local blue glow.
 /// </summary>
 [DisallowMultipleComponent]
 public sealed class SoulshotVisual : MonoBehaviour
@@ -36,8 +35,18 @@ public sealed class SoulshotVisual : MonoBehaviour
 
         AddPart("DGradeBlueMetalCapsule", coreMesh, coreMaterial, Vector3.zero, false);
 
-        // No self-lit point light: it washed the enamel into pale blue and made it read like glass.
-        // Gloss comes from the clear-coat-like material and painted studio reflections instead.
+        // The material gets a very small blue emission so the capsule itself reads as magical,
+        // while a low-intensity point light softly tints the ground right around the drop.
+        // Keep the light on the unscaled item root: ModelScale must not shrink its world range.
+        GameObject glowObject = new GameObject("Soulshot_SubtleBlueGlow");
+        glowObject.transform.SetParent(transform, false);
+        Light glow = glowObject.AddComponent<Light>();
+        glow.type = LightType.Point;
+        glow.color = new Color(0.10f, 0.28f, 1.00f, 1f);
+        glow.intensity = 0.28f;
+        glow.range = 0.72f;
+        glow.shadows = LightShadows.None;
+        glow.bounceIntensity = 0f;
     }
 
     private void AddPart(string partName, Mesh mesh, Material material, Vector3 localPosition, bool castShadows)
@@ -66,7 +75,12 @@ public sealed class SoulshotVisual : MonoBehaviour
 
         coreMaterial = MakeMaterial("Soulshot D Glossy Pepsi Blue Aluminum Enamel",
             Color.white, BuildBlueMetalTexture(), 0.42f, 0.94f, false);
-        // Deliberately no emission: the blue should come from the enamel pigment, not from glow.
+        if (coreMaterial.HasProperty("_EmissionColor"))
+        {
+            // Keep emission dark and saturated; it should enrich the blue, not bleach it cyan.
+            coreMaterial.SetColor("_EmissionColor", new Color(0.006f, 0.020f, 0.085f, 1f));
+            coreMaterial.EnableKeyword("_EMISSION");
+        }
         built = true;
     }
 
@@ -89,8 +103,7 @@ public sealed class SoulshotVisual : MonoBehaviour
         if (material.HasProperty("_Smoothness")) material.SetFloat("_Smoothness", smoothness);
         if (material.HasProperty("_Glossiness")) material.SetFloat("_Glossiness", smoothness);
 
-        // The surface remains opaque; blue emission and lighting provide a subtle metallic glow.
-        material.DisableKeyword("_EMISSION");
+        // The capsule stays opaque. Its low blue emission is enabled after material creation.
         if (transparent)
         {
             material.SetOverrideTag("RenderType", "Transparent");
