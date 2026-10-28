@@ -124,7 +124,7 @@ public sealed class NewInventoryWindowUI : MonoBehaviour
             frameRect.x + frameRect.width * (31f / 640f),
             frameRect.y + frameRect.height * (44f / 360f),
             frameRect.width * (578f / 640f),
-            frameRect.height * (274f / 360f));
+            frameRect.height * (280f / 360f));
 
         if (_blueBackgroundTexture != null)
         {
