@@ -23,6 +23,7 @@ public sealed class WorldTargetable : MonoBehaviour
     private GameObject _healthBarRoot;
     private Transform _healthBarFill;
     private bool _isMonster;
+    private bool _isGroundItem;
 
     public string TargetType { get; private set; } = string.Empty;
     public string TargetID { get; private set; } = string.Empty;
@@ -35,6 +36,7 @@ public sealed class WorldTargetable : MonoBehaviour
         TargetID = targetID ?? string.Empty;
         DisplayName = displayName ?? string.Empty;
         _isMonster = string.Equals(TargetType, "monster", System.StringComparison.OrdinalIgnoreCase);
+        _isGroundItem = string.Equals(TargetType, "item", System.StringComparison.OrdinalIgnoreCase);
 
         if (nameLabel != null)
         {
@@ -112,6 +114,13 @@ public sealed class WorldTargetable : MonoBehaviour
         if (_nameLabel == null)
         {
             return;
+        }
+
+        // Ground item names are hidden until the item is hovered or selected.
+        // Use the same highlight yellow as monster names while it is interactive.
+        if (_isGroundItem)
+        {
+            _nameLabel.gameObject.SetActive(_hovered || _selected);
         }
 
         _nameLabel.color = _selected || _hovered ? HighlightNameColor : NormalNameColor;
