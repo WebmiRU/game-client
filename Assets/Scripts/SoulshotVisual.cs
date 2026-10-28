@@ -14,9 +14,14 @@ public sealed class SoulshotVisual : MonoBehaviour
     private static Material coreMaterial;
     private static bool built;
 
-    // The capsule lies on its side. Its vertical half-extent is the scaled radius;
-    // keep only a 5 mm clearance so it rests on the surface without clipping into it.
-    public const float GroundCenterOffset = 0.278f * 0.82f + 0.005f;
+    // Shared visual/collision dimensions. The capsule lies on its side in the world.
+    public const float CapsuleRadius = 0.278f;
+    public const float CapsuleHalfCylinder = 0.50f;
+    public const float ModelScale = 0.82f;
+    public const float GroundClearance = 0.005f;
+    public const float GroundCenterOffset = CapsuleRadius * ModelScale + GroundClearance;
+    public const float CollisionRadius = CapsuleRadius * ModelScale;
+    public const float CollisionHeight = 2f * (CapsuleHalfCylinder + CapsuleRadius) * ModelScale;
 
     private GameObject modelRoot;
 
@@ -27,7 +32,7 @@ public sealed class SoulshotVisual : MonoBehaviour
 
         modelRoot = new GameObject("Soulshot_D_3D_Model");
         modelRoot.transform.SetParent(transform, false);
-        modelRoot.transform.localScale = Vector3.one * 0.82f;
+        modelRoot.transform.localScale = Vector3.one * ModelScale;
 
         AddPart("DGradeBlueMetalCapsule", coreMesh, coreMaterial, Vector3.zero, false);
 
@@ -61,8 +66,8 @@ public sealed class SoulshotVisual : MonoBehaviour
         if (built) return;
 
         // One smooth capsule only: all braid and collar details are painted into its albedo texture.
-        const float capsuleRadius = 0.278f;
-        const float halfCylinder = 0.50f;
+        const float capsuleRadius = CapsuleRadius;
+        const float halfCylinder = CapsuleHalfCylinder;
         coreMesh = BuildCapsule(capsuleRadius, halfCylinder, 64, 24, 64);
 
         coreMaterial = MakeMaterial("Soulshot D Deep Navy Blue Metallic Capsule",
@@ -120,8 +125,8 @@ public sealed class SoulshotVisual : MonoBehaviour
         const int height = 512;
         const int strands = 16;
         const float braidHalfLength = 0.248f;
-        const float capsuleRadius = 0.278f;
-        const float halfCylinder = 0.50f;
+        const float capsuleRadius = CapsuleRadius;
+        const float halfCylinder = CapsuleHalfCylinder;
         const float fullLength = 2f * (halfCylinder + capsuleRadius);
         float turns = braidHalfLength / (Mathf.PI * capsuleRadius);
         const float collarCenter = 0.255f;
