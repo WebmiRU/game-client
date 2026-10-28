@@ -449,7 +449,11 @@ public sealed class NewInventoryWindowUI : MonoBehaviour
             Texture2D icon = isSoulshot ? _soulshotIconTexture : _genericItemIconTexture;
             if (icon != null)
             {
+                // Tilt the soulshot at 45 degrees, like an item icon in a classic MMORPG inventory.
+                Matrix4x4 previousMatrix = GUI.matrix;
+                GUIUtility.RotateAroundPivot(-45f, iconRect.center);
                 GUI.DrawTexture(iconRect, icon, ScaleMode.ScaleToFit, true);
+                GUI.matrix = previousMatrix;
             }
 
             if (item.quantity > 1)
@@ -551,8 +555,33 @@ public sealed class NewInventoryWindowUI : MonoBehaviour
                 color = Color.Lerp(color, new Color(0.001f, 0.025f, 0.105f, edge), darkReflection * 0.52f);
                 color = Color.Lerp(color, new Color(0.28f, 0.62f, 0.96f, edge), narrowReflection * 0.22f);
 
-                // Thin aluminium seams stay silver; the enamel itself is smooth and glossy,
-                // with no coarse diamond braid that would read as scratches at inventory size.
+                // Fine silver diamond mesh around the glossy blue core, matching the 3D model.
+                if (Mathf.Abs(px) < 0.365f && Mathf.Abs(py) < 0.29f)
+                {
+                    float phaseA = Mathf.Repeat(px * 7f + py * 9f + 0.5f, 1f);
+                    float phaseB = Mathf.Repeat(px * 7f - py * 9f + 0.5f, 1f);
+                    float distA = Mathf.Min(phaseA, 1f - phaseA);
+                    float distB = Mathf.Min(phaseB, 1f - phaseB);
+                    float lineDistance = Mathf.Min(distA, distB);
+
+                    if (lineDistance < 0.085f)
+                    {
+                        float wire = 1f - Mathf.InverseLerp(0.025f, 0.085f, lineDistance);
+                        Color wireShadow = new Color(0.075f, 0.13f, 0.23f, edge);
+                        Color wireSilver = new Color(0.42f, 0.56f, 0.74f, edge);
+                        Color wireHighlight = new Color(0.78f, 0.87f, 0.97f, edge);
+                        color = Color.Lerp(color, wireShadow, wire * 0.28f);
+                        color = Color.Lerp(color, wireSilver, wire * 0.88f);
+
+                        if (lineDistance < 0.028f)
+                        {
+                            float core = 1f - Mathf.InverseLerp(0.008f, 0.028f, lineDistance);
+                            color = Color.Lerp(color, wireHighlight, core * 0.72f);
+                        }
+                    }
+                }
+
+                // Thin silver seams separate the woven section from the smooth rounded ends.
                 bool collar = Mathf.Abs(Mathf.Abs(px) - 0.395f) < 0.025f && Mathf.Abs(py) < 0.25f;
                 if (collar)
                 {
