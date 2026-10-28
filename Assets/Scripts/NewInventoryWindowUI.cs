@@ -130,6 +130,9 @@ public sealed class NewInventoryWindowUI : MonoBehaviour
         {
             GUI.color = new Color(0.012f, 0.045f, 0.15f, 0.80f);
             GUI.DrawTexture(backgroundRect, _blueBackgroundTexture, ScaleMode.StretchToFill, true);
+
+            // The inventory grid occupies the right two-thirds of the inner opening.
+            DrawInventoryGrid(frameRect);
         }
 
         if (_frameTexture != null)
@@ -138,6 +141,94 @@ public sealed class NewInventoryWindowUI : MonoBehaviour
             GUI.DrawTexture(frameRect, _frameTexture, ScaleMode.StretchToFill, true);
         }
 
+        GUI.color = previousColor;
+    }
+
+    private void DrawInventoryGrid(Rect frameRect)
+    {
+        // These coordinates are relative to the 640x360 frame texture.
+        // Keep the grid clear of the top/bottom ornament and use the right 2/3
+        // of the inner opening as its layout area.
+        const float innerLeft = 31f;
+        const float innerWidth = 578f;
+        const float gridTop = 66f;
+        const float gridHeight = 232f;
+        const int columns = 7;
+        const int rows = 8;
+        const float gap = 4f;
+
+        float scaleX = frameRect.width / 640f;
+        float scaleY = frameRect.height / 360f;
+        float areaX = innerLeft + innerWidth / 3f;
+        float areaWidth = innerWidth * 2f / 3f;
+
+        float scaledGapX = gap * scaleX;
+        float scaledGapY = gap * scaleY;
+        float scaledAreaWidth = areaWidth * scaleX;
+        float scaledAreaHeight = gridHeight * scaleY;
+        float cellSize = Mathf.Min(
+            (scaledAreaWidth - scaledGapX * (columns - 1)) / columns,
+            (scaledAreaHeight - scaledGapY * (rows - 1)) / rows);
+
+        if (cellSize <= 0f || _blueBackgroundTexture == null) return;
+
+        float gridWidth = columns * cellSize + (columns - 1) * scaledGapX;
+        float gridPixelHeight = rows * cellSize + (rows - 1) * scaledGapY;
+        float gridX = frameRect.x + areaX * scaleX + (scaledAreaWidth - gridWidth) * 0.5f;
+        float gridY = frameRect.y + gridTop * scaleY + (scaledAreaHeight - gridPixelHeight) * 0.5f;
+
+        Color previousColor = GUI.color;
+
+        for (int row = 0; row < rows; row++)
+        {
+            for (int column = 0; column < columns; column++)
+            {
+                Rect cell = new Rect(
+                    gridX + column * (cellSize + scaledGapX),
+                    gridY + row * (cellSize + scaledGapY),
+                    cellSize,
+                    cellSize);
+
+                // Soft shadow beneath each slot.
+                DrawSolidRect(
+                    new Rect(cell.x + 1f * scaleX, cell.y + 1.5f * scaleY, cell.width, cell.height),
+                    new Color(0.005f, 0.008f, 0.02f, 0.72f));
+
+                // Bronze outer edge and dark inset.
+                DrawSolidRect(cell, new Color(0.30f, 0.21f, 0.12f, 0.96f));
+                Rect inset = new Rect(
+                    cell.x + 1.2f * scaleX,
+                    cell.y + 1.2f * scaleY,
+                    cell.width - 2.4f * scaleX,
+                    cell.height - 2.4f * scaleY);
+                DrawSolidRect(inset, new Color(0.025f, 0.055f, 0.12f, 0.94f));
+
+                // A restrained bevel makes the cells read as individual slots.
+                DrawSolidRect(
+                    new Rect(inset.x, inset.y, inset.width, 1f * scaleY),
+                    new Color(0.58f, 0.43f, 0.25f, 0.74f));
+                DrawSolidRect(
+                    new Rect(inset.x, inset.y, 1f * scaleX, inset.height),
+                    new Color(0.42f, 0.34f, 0.25f, 0.58f));
+                DrawSolidRect(
+                    new Rect(inset.x, inset.yMax - 1f * scaleY, inset.width, 1f * scaleY),
+                    new Color(0.003f, 0.008f, 0.022f, 0.82f));
+                DrawSolidRect(
+                    new Rect(inset.xMax - 1f * scaleX, inset.y, 1f * scaleX, inset.height),
+                    new Color(0.003f, 0.008f, 0.022f, 0.82f));
+            }
+        }
+
+        GUI.color = previousColor;
+    }
+
+    private void DrawSolidRect(Rect rect, Color color)
+    {
+        if (_blueBackgroundTexture == null || rect.width <= 0f || rect.height <= 0f) return;
+
+        Color previousColor = GUI.color;
+        GUI.color = color;
+        GUI.DrawTexture(rect, _blueBackgroundTexture, ScaleMode.StretchToFill, true);
         GUI.color = previousColor;
     }
 
