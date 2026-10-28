@@ -19,7 +19,6 @@ public sealed class SoulshotVisual : MonoBehaviour
 
     private static Material[] crystalMaterials;
     private static Material[] endCapMaterials;
-    private static Material crystalRidgeMaterial;
     private static Material bronzeAccentMaterial;
     private static Material darkEngravingMaterial;
     private static Material badgeGemMaterial;
@@ -206,7 +205,6 @@ public sealed class SoulshotVisual : MonoBehaviour
             "Soulshot D Tiny Blue Engraving Gem",
             new Color(0.08f, 0.42f, 0.95f), 0.18f, 0.88f,
             new Color(0.012f, 0.085f, 0.30f));
-        crystalRidgeMaterial = crystalMaterials[6];
 
         built = true;
     }
@@ -314,12 +312,13 @@ public sealed class SoulshotVisual : MonoBehaviour
             {
                 int a = i * (tubeSegments + 1) + j;
                 int b = a + tubeSegments + 1;
+                // Reverse the winding so the torus normals face outward.
                 triangles.Add(a);
-                triangles.Add(b);
-                triangles.Add(a + 1);
                 triangles.Add(a + 1);
                 triangles.Add(b);
+                triangles.Add(a + 1);
                 triangles.Add(b + 1);
+                triangles.Add(b);
             }
         }
 
