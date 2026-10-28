@@ -1940,16 +1940,24 @@ public sealed class GameServerLoginUI : MonoBehaviour
                 : item.name;
             string displayName = item.quantity > 1 ? itemName + " x" + item.quantity : itemName;
 
-            // Ground-item labels are intentionally hidden; the target remains selectable by its collider.
+            // Match the monster nameplate style. WorldTargetable keeps this label hidden
+            // until the item is hovered or selected, then highlights it in the same yellow.
             Transform labelTransform = view.transform.Find("NameLabel");
-            if (labelTransform != null)
+            TextMesh itemLabel = labelTransform != null
+                ? labelTransform.GetComponent<TextMesh>()
+                : null;
+            if (itemLabel == null)
             {
-                Destroy(labelTransform.gameObject);
+                itemLabel = CreateWorldNameLabel(view, displayName, 0.45f);
+            }
+            else
+            {
+                itemLabel.text = displayName;
             }
 
             WorldTargetable targetable = view.GetComponent<WorldTargetable>();
             if (targetable == null) targetable = view.AddComponent<WorldTargetable>();
-            targetable.Configure("item", item.id, displayName, null);
+            targetable.Configure("item", item.id, displayName, itemLabel);
         }
 
         List<string> staleIDs = new List<string>();
