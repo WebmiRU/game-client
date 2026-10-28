@@ -1248,7 +1248,7 @@ public sealed class GameServerLoginUI : MonoBehaviour
             if (monsterCollision != null)
             {
                 monsterCollision.isTrigger = isFalling;
-                IgnoreGroundItemCollisions(monsterCollision);
+                IgnoreGroundItemCollisionsForActor(monsterCollision);
             }
 
             MonsterDeathPresentation deathPresentation = view.GetComponent<MonsterDeathPresentation>();
@@ -1754,7 +1754,7 @@ public sealed class GameServerLoginUI : MonoBehaviour
                     player.position.x,
                     player.position.y + height * 0.5f,
                     player.position.z);
-                IgnoreGroundItemCollisions(view.GetComponent<Collider>());
+                IgnoreGroundItemCollisionsForActor(view.GetComponent<Collider>());
 
                 if (player.rotation != null)
                 {
@@ -1890,6 +1890,7 @@ public sealed class GameServerLoginUI : MonoBehaviour
                 }
                 view.name = "GroundItem_" + item.id;
                 _groundItemViews[item.id] = view;
+                ConfigureGroundItemCollision(view.GetComponent<Collider>());
             }
 
             const float itemSize = 0.35f;
@@ -1949,7 +1950,6 @@ public sealed class GameServerLoginUI : MonoBehaviour
             WorldTargetable targetable = view.GetComponent<WorldTargetable>();
             if (targetable == null) targetable = view.AddComponent<WorldTargetable>();
             targetable.Configure("item", item.id, displayName, null);
-            ConfigureGroundItemCollision(view.GetComponent<Collider>());
         }
 
         List<string> staleIDs = new List<string>();
@@ -1985,7 +1985,7 @@ public sealed class GameServerLoginUI : MonoBehaviour
         }
     }
 
-    private void IgnoreGroundItemCollisions(Collider actorCollider)
+    public void IgnoreGroundItemCollisionsForActor(Collider actorCollider)
     {
         if (actorCollider == null)
         {
