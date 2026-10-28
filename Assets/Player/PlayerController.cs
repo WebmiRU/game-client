@@ -754,6 +754,21 @@ public class PlayerController : MonoBehaviour
 
         if (stopMovement)
         {
+            // A failed approach must not leave a pickup command armed for some later,
+            // unrelated movement through the same area.
+            if (!string.IsNullOrEmpty(_groundItemMoveTargetID))
+            {
+                _groundItemMoveTargetID = string.Empty;
+                if (_gameServerLogin == null)
+                {
+                    _gameServerLogin = GameServerLoginUI.Instance;
+                }
+                if (_gameServerLogin != null)
+                {
+                    _gameServerLogin.CancelGroundItemPickupIntent();
+                }
+            }
+
             // If the server cannot make progress toward the melee approach point,
             // stop combat too; otherwise the combat update would issue the same
             // impossible move order again on the very next frame.
