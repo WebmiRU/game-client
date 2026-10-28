@@ -941,7 +941,7 @@ public class PlayerController : MonoBehaviour
         Mouse mouse = Mouse.current;
         bool pointerOverInventoryToggle = mouse != null &&
             GameServerLoginUI.IsPointerOverInventoryToggle(mouse.position.ReadValue());
-        bool worldInputBlocked = InventoryWindowUI.IsOpen || pointerOverInventoryToggle;
+        bool worldInputBlocked = NewInventoryWindowUI.IsOpen || pointerOverInventoryToggle;
 
         if (worldInputBlocked)
         {

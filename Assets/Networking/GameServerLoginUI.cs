@@ -441,7 +441,7 @@ public sealed class GameServerLoginUI : MonoBehaviour
         DrawInventoryToggle();
         // Draw the window in this proven, active IMGUI pass instead of relying on a
         // separate component's OnGUI callback.
-        InventoryWindowUI.DrawOverlayFromHUD();
+        NewInventoryWindowUI.DrawOverlayFromHUD();
     }
 
     /// <summary>
@@ -486,13 +486,13 @@ public sealed class GameServerLoginUI : MonoBehaviour
             rect.width - border * 2f,
             rect.height - border * 2f);
 
-        string caption = InventoryWindowUI.IsOpen
+        string caption = NewInventoryWindowUI.IsOpen
             ? "ЗАКРЫТЬ ИНВЕНТАРЬ  [I]"
             : "ОТКРЫТЬ ИНВЕНТАРЬ  [I]";
 
         if (GUI.Button(buttonRect, caption, _inventoryHudButtonStyle))
         {
-            InventoryWindowUI.ToggleFromHUD();
+            NewInventoryWindowUI.ToggleFromHUD();
         }
     }
 
