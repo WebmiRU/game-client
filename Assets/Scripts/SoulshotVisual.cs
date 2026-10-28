@@ -119,6 +119,7 @@ public sealed class SoulshotVisual : MonoBehaviour
         float lowerCollarV = 0.5f - collarCenter / fullLength;
         float upperCollarV = 0.5f + collarCenter / fullLength;
         float collarHalfWidthV = collarHalfWidth / fullLength;
+        const float braidStrands = 16f;
 
         Texture2D texture = new Texture2D(width, height, TextureFormat.RGBA32, true)
         {
@@ -170,6 +171,39 @@ public sealed class SoulshotVisual : MonoBehaviour
                 color = Color.Lerp(color, darkReflection, darkStrip * 0.74f);
                 color = Color.Lerp(color, highlightBlue, narrowReflection * 0.52f);
                 color = Color.Lerp(color, glintBlue, Mathf.Clamp01(narrowReflection * 0.74f));
+
+                // A fine silver diamond braid wraps the enamel core between the two collars.
+                // Keep the wire thin and shaded so it reads as metal weave, not scratches.
+                if (v >= lowerCollarV && v <= upperCollarV)
+                {
+                    float axial = Mathf.InverseLerp(lowerCollarV, upperCollarV, v);
+                    float phaseA = Mathf.Repeat(u * braidStrands + axial * 5f, 1f);
+                    float phaseB = Mathf.Repeat(u * braidStrands - axial * 5f, 1f);
+                    float distA = Mathf.Min(phaseA, 1f - phaseA);
+                    float distB = Mathf.Min(phaseB, 1f - phaseB);
+                    float lineDistance = Mathf.Min(distA, distB);
+
+                    if (lineDistance < 0.075f)
+                    {
+                        float wireEdge = 1f - Mathf.InverseLerp(0.025f, 0.075f, lineDistance);
+                        Color wireShadow = new Color(0.075f, 0.13f, 0.23f, 1f);
+                        Color wireMetal = new Color(0.40f, 0.55f, 0.73f, 1f);
+                        Color wireHighlight = new Color(0.76f, 0.85f, 0.96f, 1f);
+                        color = Color.Lerp(color, wireShadow, wireEdge * 0.34f);
+                        color = Color.Lerp(color, wireMetal, wireEdge * 0.88f);
+
+                        if (lineDistance < 0.026f)
+                        {
+                            float core = 1f - Mathf.InverseLerp(0.008f, 0.026f, lineDistance);
+                            color = Color.Lerp(color, wireHighlight, core * 0.72f);
+                        }
+
+                        if (distA < 0.038f && distB < 0.038f)
+                        {
+                            color = Color.Lerp(color, new Color(0.88f, 0.93f, 1f, 1f), 0.24f);
+                        }
+                    }
+                }
 
                 // Almost imperceptible fine aluminium grain, not visible scratches or noise.
                 color.r += axialMicrotexture * 0.18f;
