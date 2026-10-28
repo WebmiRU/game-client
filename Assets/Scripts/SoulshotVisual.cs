@@ -132,11 +132,11 @@ public sealed class SoulshotVisual : MonoBehaviour
         // The reference is a glossy cobalt-blue aluminium can: saturated blue enamel,
         // broad reflected light, and one narrow bright vertical glint. It is not glass
         // and should not have pale/cyan translucency or a coarse hammered texture.
-        Color deepBlue = new Color(0.004f, 0.055f, 0.245f, 1f);
-        Color bodyBlue = new Color(0.006f, 0.115f, 0.405f, 1f);
-        Color reflectedBlue = new Color(0.012f, 0.245f, 0.655f, 1f);
-        Color highlightBlue = new Color(0.045f, 0.385f, 0.835f, 1f);
-        Color glintBlue = new Color(0.36f, 0.62f, 0.94f, 1f);
+        Color deepBlue = new Color(0.004f, 0.070f, 0.275f, 1f);
+        Color bodyBlue = new Color(0.006f, 0.275f, 0.645f, 1f);
+        Color reflectedBlue = new Color(0.012f, 0.415f, 0.815f, 1f);
+        Color highlightBlue = new Color(0.035f, 0.575f, 0.955f, 1f);
+        Color glintBlue = new Color(0.32f, 0.70f, 0.985f, 1f);
         Color darkReflection = new Color(0.001f, 0.018f, 0.085f, 1f);
 
         for (int y = 0; y < height; y++)
