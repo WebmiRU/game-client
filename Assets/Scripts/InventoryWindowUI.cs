@@ -49,6 +49,11 @@ public sealed class InventoryWindowUI : MonoBehaviour
     private GUIStyle _guiButtonStyle;
     private GUIStyle _guiTabStyle;
     private bool _showQuestItems;
+    private bool _windowPositionInitialized;
+    private Vector2 _windowPosition;
+    private bool _draggingWindow;
+    private Vector2 _dragMouseStart;
+    private Vector2 _dragWindowStart;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     private static void Bootstrap()
@@ -141,6 +146,7 @@ public sealed class InventoryWindowUI : MonoBehaviour
     public void SetOpen(bool open)
     {
         IsOpen = open;
+        _draggingWindow = false;
         if (window != null) window.SetActive(open);
         if (previewCamera != null) previewCamera.enabled = open;
         if (open)
@@ -168,8 +174,16 @@ public sealed class InventoryWindowUI : MonoBehaviour
             0.55f, 1.35f);
         float width = Mathf.Min(1360f * scale, Screen.width - 24f);
         float height = Mathf.Min(760f * scale, Screen.height - 24f);
-        float x = (Screen.width - width) * 0.5f;
-        float y = (Screen.height - height) * 0.5f;
+        if (!_windowPositionInitialized)
+        {
+            _windowPosition = new Vector2(
+                (Screen.width - width) * 0.5f,
+                (Screen.height - height) * 0.5f);
+            _windowPositionInitialized = true;
+        }
+        ClampWindowPosition(width, height);
+        float x = _windowPosition.x;
+        float y = _windowPosition.y;
 
         _guiTitleStyle.fontSize = Mathf.RoundToInt(23f * scale);
         _guiSectionStyle.fontSize = Mathf.Max(9, Mathf.RoundToInt(13f * scale));
@@ -182,18 +196,34 @@ public sealed class InventoryWindowUI : MonoBehaviour
         Color oldGuiColor = GUI.color;
 
         Rect frame = new Rect(x, y, width, height);
-        DrawGuiRect(frame, new Color(0.42f, 0.32f, 0.21f, 1f));
-        DrawGuiRect(InsetGuiRect(frame, 4f * scale), new Color(0.035f, 0.031f, 0.025f, 1f));
-        Rect surface = InsetGuiRect(frame, 7f * scale);
-        DrawGuiRect(surface, new Color(0.105f, 0.095f, 0.079f, 0.99f));
+        DrawOrnateFrame(frame, scale);
+        Rect surface = InsetGuiRect(frame, 10f * scale);
 
         Rect header = new Rect(surface.x + 2f * scale, surface.y + 2f * scale,
             surface.width - 4f * scale, 50f * scale);
-        DrawGuiRect(header, new Color(0.16f, 0.145f, 0.12f, 1f));
-        DrawGuiRect(new Rect(header.x, header.yMax - 2f * scale, header.width, 2f * scale),
-            new Color(0.48f, 0.38f, 0.25f, 1f));
-        GUI.Label(new Rect(header.x, header.y + 4f * scale, header.width, 38f * scale),
+        DrawGuiRect(header, new Color(0.105f, 0.085f, 0.058f, 1f));
+        DrawGuiRect(new Rect(header.x + 30f * scale, header.y + 1f * scale,
+            header.width - 60f * scale, 1f * scale), new Color(0.58f, 0.44f, 0.25f, 1f));
+        DrawGuiRect(new Rect(header.x + 18f * scale, header.yMax - 2f * scale,
+            header.width - 36f * scale, 1f * scale), new Color(0.25f, 0.19f, 0.12f, 1f));
+
+        Rect titlePlate = new Rect(header.center.x - 166f * scale, header.y + 5f * scale,
+            332f * scale, 39f * scale);
+        DrawGuiRect(titlePlate, new Color(0.045f, 0.037f, 0.026f, 1f));
+        DrawGuiRect(InsetGuiRect(titlePlate, 1f * scale), new Color(0.42f, 0.31f, 0.18f, 1f));
+        DrawGuiRect(InsetGuiRect(titlePlate, 2.5f * scale), new Color(0.09f, 0.07f, 0.045f, 1f));
+        DrawGuiDiamond(new Vector2(titlePlate.x + 8f * scale, titlePlate.center.y), 9f * scale,
+            new Color(0.72f, 0.55f, 0.29f, 1f));
+        DrawGuiDiamond(new Vector2(titlePlate.xMax - 8f * scale, titlePlate.center.y), 9f * scale,
+            new Color(0.72f, 0.55f, 0.29f, 1f));
+
+        GUI.Label(new Rect(titlePlate.x + 12f * scale, titlePlate.y + 1f * scale,
+            titlePlate.width - 24f * scale, titlePlate.height - 2f * scale),
             "Инвентарь", _guiTitleStyle);
+
+        Rect dragRect = new Rect(header.x + 8f * scale, header.y + 1f * scale,
+            header.width - 82f * scale, header.height - 2f * scale);
+        HandleWindowDragging(dragRect, width, height);
 
         Rect closeRect = new Rect(frame.xMax - 50f * scale, frame.y + 14f * scale,
             32f * scale, 30f * scale);
@@ -213,20 +243,17 @@ public sealed class InventoryWindowUI : MonoBehaviour
 
         Rect leftPanel = new Rect(leftX, panelY, leftWidth, panelHeight);
         Rect rightPanel = new Rect(rightX, panelY, rightWidth, panelHeight);
-        DrawGuiRect(leftPanel, new Color(0.045f, 0.042f, 0.036f, 1f));
-        DrawGuiRect(InsetGuiRect(leftPanel, 2f * scale), new Color(0.09f, 0.082f, 0.068f, 1f));
-        DrawGuiRect(rightPanel, new Color(0.045f, 0.042f, 0.036f, 1f));
-        DrawGuiRect(InsetGuiRect(rightPanel, 2f * scale), new Color(0.075f, 0.069f, 0.058f, 1f));
+        DrawOrnatePanel(leftPanel, new Color(0.083f, 0.075f, 0.061f, 1f), scale);
+        DrawOrnatePanel(rightPanel, new Color(0.074f, 0.068f, 0.055f, 1f), scale);
 
         GUI.Label(new Rect(leftPanel.x + 40f * scale, leftPanel.y + 9f * scale,
             leftPanel.width - 80f * scale, 24f * scale), "ПЕРСОНАЖ", _guiSectionStyle);
 
         Rect viewport = new Rect(leftPanel.x + 112f * scale, leftPanel.y + 65f * scale,
             216f * scale, 424f * scale);
-        DrawGuiRect(viewport, new Color(0.025f, 0.024f, 0.021f, 1f));
-        DrawGuiRect(InsetGuiRect(viewport, 2f * scale), new Color(0.12f, 0.108f, 0.087f, 1f));
-        Rect viewportInner = InsetGuiRect(viewport, 4f * scale);
-        DrawGuiRect(viewportInner, new Color(0.045f, 0.043f, 0.037f, 1f));
+        DrawOrnatePanel(viewport, new Color(0.035f, 0.032f, 0.027f, 1f), scale);
+        Rect viewportInner = InsetGuiRect(viewport, 5f * scale);
+        DrawGuiRect(viewportInner, new Color(0.025f, 0.024f, 0.021f, 1f));
         if (previewTexture != null)
         {
             GUI.DrawTexture(InsetGuiRect(viewportInner, 2f * scale), previewTexture,
@@ -284,11 +311,7 @@ public sealed class InventoryWindowUI : MonoBehaviour
             {
                 Rect cell = new Rect(cellsX + column * (cellWidth + gap),
                     cellsY + row * (cellHeight + gap), cellWidth, cellHeight);
-                DrawGuiRect(cell, new Color(0.18f, 0.163f, 0.132f, 1f));
-                DrawGuiRect(InsetGuiRect(cell, 1f * scale), new Color(0.055f, 0.052f, 0.045f, 1f));
-                DrawGuiRect(new Rect(cell.x + 2f * scale, cell.y + 2f * scale,
-                    Mathf.Max(1f, cell.width - 4f * scale), 1f * scale),
-                    new Color(0.13f, 0.122f, 0.104f, 1f));
+                DrawInventorySlot(cell, scale);
             }
         }
 
@@ -331,10 +354,11 @@ public sealed class InventoryWindowUI : MonoBehaviour
         _guiTitleStyle = new GUIStyle(GUI.skin.label)
         {
             alignment = TextAnchor.MiddleCenter,
-            fontStyle = FontStyle.Normal,
-            wordWrap = false
+            fontStyle = FontStyle.Bold,
+            wordWrap = false,
+            clipping = TextClipping.Clip
         };
-        _guiTitleStyle.normal.textColor = new Color(0.9f, 0.85f, 0.75f, 1f);
+        _guiTitleStyle.normal.textColor = new Color(0.91f, 0.84f, 0.69f, 1f);
 
         _guiSectionStyle = new GUIStyle(GUI.skin.label)
         {
@@ -342,44 +366,48 @@ public sealed class InventoryWindowUI : MonoBehaviour
             fontStyle = FontStyle.Bold,
             wordWrap = false
         };
-        _guiSectionStyle.normal.textColor = new Color(0.69f, 0.60f, 0.45f, 1f);
+        _guiSectionStyle.normal.textColor = new Color(0.74f, 0.61f, 0.40f, 1f);
 
         _guiLabelStyle = new GUIStyle(GUI.skin.label)
         {
             alignment = TextAnchor.MiddleCenter,
+            fontStyle = FontStyle.Normal,
             wordWrap = false
         };
-        _guiLabelStyle.normal.textColor = new Color(0.84f, 0.78f, 0.65f, 1f);
+        _guiLabelStyle.normal.textColor = new Color(0.86f, 0.80f, 0.67f, 1f);
 
         _guiSmallLabelStyle = new GUIStyle(_guiLabelStyle)
         {
             alignment = TextAnchor.MiddleLeft
         };
-        _guiSmallLabelStyle.normal.textColor = new Color(0.75f, 0.69f, 0.57f, 1f);
+        _guiSmallLabelStyle.normal.textColor = new Color(0.72f, 0.65f, 0.52f, 1f);
 
         _guiSlotLabelStyle = new GUIStyle(GUI.skin.label)
         {
             alignment = TextAnchor.LowerCenter,
             wordWrap = true,
-            clipping = TextClipping.Clip
+            clipping = TextClipping.Clip,
+            fontStyle = FontStyle.Normal
         };
-        _guiSlotLabelStyle.normal.textColor = new Color(0.62f, 0.57f, 0.47f, 1f);
+        _guiSlotLabelStyle.normal.textColor = new Color(0.72f, 0.64f, 0.49f, 1f);
 
         _guiButtonStyle = new GUIStyle(GUI.skin.button)
         {
             alignment = TextAnchor.MiddleCenter,
             fontStyle = FontStyle.Bold,
             wordWrap = false,
-            padding = new RectOffset(2, 2, 1, 1)
+            clipping = TextClipping.Clip,
+            padding = new RectOffset(3, 3, 1, 1),
+            border = new RectOffset(0, 0, 0, 0)
         };
         SetGuiButtonBackground(_guiButtonStyle, _guiTransparentTexture);
-        _guiButtonStyle.normal.textColor = new Color(0.92f, 0.85f, 0.7f, 1f);
-        _guiButtonStyle.hover.textColor = Color.white;
+        _guiButtonStyle.normal.textColor = new Color(0.91f, 0.82f, 0.64f, 1f);
+        _guiButtonStyle.hover.textColor = new Color(1f, 0.94f, 0.80f, 1f);
         _guiButtonStyle.active.textColor = Color.white;
         _guiButtonStyle.focused.textColor = Color.white;
 
         _guiTabStyle = new GUIStyle(_guiButtonStyle);
-        _guiTabStyle.fontStyle = FontStyle.Normal;
+        _guiTabStyle.fontStyle = FontStyle.Bold;
     }
 
     private static Texture2D CreateGuiTexture(Color color, string textureName)
@@ -420,39 +448,171 @@ public sealed class InventoryWindowUI : MonoBehaviour
     private bool DrawInventoryButton(Rect rect, string label, Color normalColor)
     {
         bool hovered = rect.Contains(Event.current.mousePosition);
+        bool pressed = hovered && Event.current.button == 0 &&
+            (Event.current.type == EventType.MouseDown || Event.current.type == EventType.MouseUp);
         Color fill = normalColor;
-        if (hovered) fill = Color.Lerp(normalColor, new Color(0.58f, 0.46f, 0.28f, 1f), 0.35f);
-        if (hovered && Event.current.button == 0 &&
-            (Event.current.type == EventType.MouseDown || Event.current.type == EventType.MouseUp))
-            fill = Color.Lerp(normalColor, Color.black, 0.25f);
-        DrawGuiRect(rect, new Color(0.42f, 0.33f, 0.22f, 1f));
-        DrawGuiRect(InsetGuiRect(rect, 1.5f), fill);
+        if (hovered) fill = Color.Lerp(normalColor, new Color(0.65f, 0.50f, 0.28f, 1f), 0.28f);
+        if (pressed) fill = Color.Lerp(normalColor, Color.black, 0.30f);
+
+        DrawGuiRect(rect, new Color(0.012f, 0.010f, 0.007f, 1f));
+        DrawGuiRect(InsetGuiRect(rect, 1f), new Color(0.62f, 0.46f, 0.26f, 1f));
+        DrawGuiRect(InsetGuiRect(rect, 2.5f), new Color(0.055f, 0.043f, 0.027f, 1f));
+        Rect face = InsetGuiRect(rect, 3.5f);
+        DrawGuiRect(face, fill);
+        DrawGuiRect(new Rect(face.x + 2f, face.y + 1f, Mathf.Max(0f, face.width - 4f), 1f),
+            new Color(0.88f, 0.69f, 0.38f, hovered ? 0.85f : 0.48f));
+        DrawGuiRect(new Rect(face.x + 2f, face.yMax - 2f, Mathf.Max(0f, face.width - 4f), 1f),
+            new Color(0.012f, 0.010f, 0.007f, 0.9f));
         return GUI.Button(rect, label, _guiButtonStyle);
     }
 
     private bool DrawInventoryTab(Rect rect, string label, bool selected, float scale)
     {
         Color color = selected
-            ? new Color(0.30f, 0.25f, 0.18f, 1f)
-            : new Color(0.12f, 0.11f, 0.09f, 1f);
+            ? new Color(0.23f, 0.18f, 0.11f, 1f)
+            : new Color(0.065f, 0.055f, 0.04f, 1f);
         bool clicked = DrawInventoryButton(rect, label, color);
-        if (!selected)
+        if (selected)
         {
-            DrawGuiRect(new Rect(rect.x + 5f * scale, rect.yMax - 2f * scale,
-                rect.width - 10f * scale, 1f * scale), new Color(0.28f, 0.24f, 0.18f, 1f));
+            DrawGuiRect(new Rect(rect.x + 7f * scale, rect.yMax - 2f * scale,
+                rect.width - 14f * scale, 2f * scale), new Color(0.87f, 0.66f, 0.34f, 1f));
+        }
+        else
+        {
+            DrawGuiRect(new Rect(rect.x + 7f * scale, rect.yMax - 2f * scale,
+                rect.width - 14f * scale, 1f * scale), new Color(0.24f, 0.18f, 0.11f, 1f));
         }
         return clicked;
     }
 
     private void DrawEquipmentSlot(Rect rect, string label, float scale)
     {
-        DrawGuiRect(rect, new Color(0.24f, 0.21f, 0.17f, 1f));
-        DrawGuiRect(InsetGuiRect(rect, 2f * scale), new Color(0.055f, 0.052f, 0.045f, 1f));
-        DrawGuiRect(new Rect(rect.x + 3f * scale, rect.y + 3f * scale,
-            Mathf.Max(1f, rect.width - 6f * scale), 1f * scale),
-            new Color(0.15f, 0.137f, 0.115f, 1f));
+        DrawGuiRect(rect, new Color(0.018f, 0.015f, 0.011f, 1f));
+        DrawGuiRect(InsetGuiRect(rect, 1f * scale), new Color(0.45f, 0.33f, 0.19f, 1f));
+        DrawGuiRect(InsetGuiRect(rect, 2.5f * scale), new Color(0.025f, 0.022f, 0.017f, 1f));
+        Rect well = InsetGuiRect(rect, 3.5f * scale);
+        DrawGuiRect(well, new Color(0.045f, 0.041f, 0.032f, 1f));
+        DrawGuiRect(new Rect(well.x + 1f * scale, well.y + 1f * scale,
+            Mathf.Max(1f, well.width - 2f * scale), 1f * scale),
+            new Color(0.24f, 0.19f, 0.12f, 0.85f));
+        float stud = 2.5f * scale;
+        DrawGuiRect(new Rect(rect.x + 3f * scale, rect.y + 3f * scale, stud, stud),
+            new Color(0.68f, 0.51f, 0.29f, 0.9f));
+        DrawGuiRect(new Rect(rect.xMax - 3f * scale - stud, rect.y + 3f * scale, stud, stud),
+            new Color(0.68f, 0.51f, 0.29f, 0.9f));
         GUI.Label(new Rect(rect.x + 1f * scale, rect.yMax - 20f * scale,
             rect.width - 2f * scale, 17f * scale), label, _guiSlotLabelStyle);
+    }
+
+    private void DrawInventorySlot(Rect rect, float scale)
+    {
+        DrawGuiRect(rect, new Color(0.014f, 0.012f, 0.009f, 1f));
+        DrawGuiRect(InsetGuiRect(rect, 1f * scale), new Color(0.34f, 0.27f, 0.17f, 1f));
+        DrawGuiRect(InsetGuiRect(rect, 2f * scale), new Color(0.02f, 0.018f, 0.014f, 1f));
+        Rect well = InsetGuiRect(rect, 3f * scale);
+        DrawGuiRect(well, new Color(0.055f, 0.051f, 0.043f, 1f));
+        DrawGuiRect(new Rect(well.x + 1f * scale, well.y + 1f * scale,
+            Mathf.Max(1f, well.width - 2f * scale), 1f * scale),
+            new Color(0.19f, 0.16f, 0.12f, 0.85f));
+        DrawGuiRect(new Rect(well.x + 1f * scale, well.y + 1f * scale,
+            1f * scale, Mathf.Max(1f, well.height - 2f * scale)),
+            new Color(0.14f, 0.12f, 0.09f, 0.65f));
+        DrawGuiRect(new Rect(well.x + 2f * scale, well.yMax - 2f * scale,
+            Mathf.Max(1f, well.width - 4f * scale), 1f * scale),
+            new Color(0.009f, 0.008f, 0.006f, 1f));
+    }
+
+    private void DrawOrnatePanel(Rect rect, Color interiorColor, float scale)
+    {
+        DrawGuiRect(rect, new Color(0.012f, 0.010f, 0.007f, 1f));
+        DrawGuiRect(InsetGuiRect(rect, 1f * scale), new Color(0.38f, 0.29f, 0.17f, 1f));
+        DrawGuiRect(InsetGuiRect(rect, 2.5f * scale), new Color(0.035f, 0.028f, 0.019f, 1f));
+        DrawGuiRect(InsetGuiRect(rect, 4f * scale), new Color(0.20f, 0.15f, 0.09f, 1f));
+        DrawGuiRect(InsetGuiRect(rect, 5.5f * scale), interiorColor);
+        Rect inner = InsetGuiRect(rect, 7f * scale);
+        DrawGuiRect(new Rect(inner.x, inner.y, inner.width, 1f * scale),
+            new Color(0.30f, 0.23f, 0.14f, 0.9f));
+        DrawGuiRect(new Rect(inner.x, inner.yMax - 1f * scale, inner.width, 1f * scale),
+            new Color(0.018f, 0.014f, 0.009f, 1f));
+        DrawGuiRect(new Rect(inner.x, inner.y, 1f * scale, inner.height),
+            new Color(0.17f, 0.13f, 0.08f, 0.8f));
+        DrawGuiRect(new Rect(inner.xMax - 1f * scale, inner.y, 1f * scale, inner.height),
+            new Color(0.018f, 0.014f, 0.009f, 1f));
+    }
+
+    private void DrawOrnateFrame(Rect rect, float scale)
+    {
+        DrawGuiRect(rect, new Color(0.008f, 0.007f, 0.005f, 1f));
+        DrawGuiRect(InsetGuiRect(rect, 1f * scale), new Color(0.68f, 0.50f, 0.27f, 1f));
+        DrawGuiRect(InsetGuiRect(rect, 2.5f * scale), new Color(0.075f, 0.055f, 0.033f, 1f));
+        DrawGuiRect(InsetGuiRect(rect, 4f * scale), new Color(0.40f, 0.30f, 0.17f, 1f));
+        DrawGuiRect(InsetGuiRect(rect, 5.5f * scale), new Color(0.022f, 0.018f, 0.012f, 1f));
+        DrawGuiRect(InsetGuiRect(rect, 7f * scale), new Color(0.20f, 0.15f, 0.09f, 1f));
+        DrawGuiRect(InsetGuiRect(rect, 9f * scale), new Color(0.085f, 0.074f, 0.058f, 1f));
+
+        Rect inset = InsetGuiRect(rect, 10f * scale);
+        DrawGuiRect(new Rect(inset.x + 24f * scale, inset.y, inset.width - 48f * scale,
+            1f * scale), new Color(0.73f, 0.58f, 0.35f, 0.72f));
+        DrawGuiRect(new Rect(inset.x + 24f * scale, inset.yMax - 1f * scale,
+            inset.width - 48f * scale, 1f * scale), new Color(0.015f, 0.012f, 0.008f, 1f));
+
+        DrawOrnateCorner(new Vector2(rect.x + 12f * scale, rect.y + 12f * scale), scale);
+        DrawOrnateCorner(new Vector2(rect.xMax - 12f * scale, rect.y + 12f * scale), scale);
+        DrawOrnateCorner(new Vector2(rect.x + 12f * scale, rect.yMax - 12f * scale), scale);
+        DrawOrnateCorner(new Vector2(rect.xMax - 12f * scale, rect.yMax - 12f * scale), scale);
+    }
+
+    private void DrawOrnateCorner(Vector2 center, float scale)
+    {
+        DrawGuiDiamond(center, 23f * scale, new Color(0.015f, 0.012f, 0.008f, 1f));
+        DrawGuiDiamond(center, 17f * scale, new Color(0.54f, 0.39f, 0.20f, 1f));
+        DrawGuiDiamond(center, 11f * scale, new Color(0.10f, 0.075f, 0.043f, 1f));
+        DrawGuiDiamond(center, 5f * scale, new Color(0.82f, 0.64f, 0.35f, 1f));
+        DrawGuiRect(new Rect(center.x + 8f * scale, center.y - 1f * scale,
+            8f * scale, 2f * scale), new Color(0.57f, 0.42f, 0.23f, 0.8f));
+        DrawGuiRect(new Rect(center.x - 1f * scale, center.y + 8f * scale,
+            2f * scale, 8f * scale), new Color(0.57f, 0.42f, 0.23f, 0.8f));
+    }
+
+    private void DrawGuiDiamond(Vector2 center, float size, Color color)
+    {
+        Rect rect = new Rect(center.x - size * 0.5f, center.y - size * 0.5f, size, size);
+        Matrix4x4 previous = GUI.matrix;
+        GUIUtility.RotateAroundPivot(45f, center);
+        DrawGuiRect(rect, color);
+        GUI.matrix = previous;
+    }
+
+    private void HandleWindowDragging(Rect dragRect, float width, float height)
+    {
+        Event current = Event.current;
+        if (current.type == EventType.MouseDown && current.button == 0 &&
+            dragRect.Contains(current.mousePosition))
+        {
+            _draggingWindow = true;
+            _dragMouseStart = current.mousePosition;
+            _dragWindowStart = _windowPosition;
+            current.Use();
+        }
+        else if (_draggingWindow && current.type == EventType.MouseDrag && current.button == 0)
+        {
+            _windowPosition = _dragWindowStart + current.mousePosition - _dragMouseStart;
+            ClampWindowPosition(width, height);
+            current.Use();
+        }
+        else if (_draggingWindow && current.type == EventType.MouseUp && current.button == 0)
+        {
+            _draggingWindow = false;
+            current.Use();
+        }
+    }
+
+    private void ClampWindowPosition(float width, float height)
+    {
+        float maxX = Mathf.Max(12f, Screen.width - width - 12f);
+        float maxY = Mathf.Max(12f, Screen.height - height - 12f);
+        _windowPosition.x = Mathf.Clamp(_windowPosition.x, 12f, maxX);
+        _windowPosition.y = Mathf.Clamp(_windowPosition.y, 12f, maxY);
     }
 
     private static Rect InsetGuiRect(Rect rect, float inset)
