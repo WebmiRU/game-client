@@ -14,8 +14,9 @@ public sealed class SoulshotVisual : MonoBehaviour
     private static Material coreMaterial;
     private static bool built;
 
-    // The visible capsule radius is 0.278 world units at 82% scale; keep 2.5 cm clearance.
-    public const float GroundCenterOffset = 0.278f * 0.82f + 0.025f;
+    // The capsule lies on its side. Its vertical half-extent is the scaled radius;
+    // keep only a 5 mm clearance so it rests on the surface without clipping into it.
+    public const float GroundCenterOffset = 0.278f * 0.82f + 0.005f;
 
     private GameObject modelRoot;
 
