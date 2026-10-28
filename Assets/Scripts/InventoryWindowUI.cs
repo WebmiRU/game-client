@@ -222,7 +222,9 @@ public sealed class InventoryWindowUI : MonoBehaviour
     {
         if (inventoryToggleCaption != null)
         {
-            inventoryToggleCaption.text = IsOpen ? "Закрыть инвентарь" : "Открыть инвентарь";
+            inventoryToggleCaption.text = IsOpen
+                ? "Закрыть инвентарь  [I]"
+                : "Открыть инвентарь  [I]";
         }
     }
 
