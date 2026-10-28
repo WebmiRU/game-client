@@ -83,7 +83,7 @@ public sealed class SoulshotVisual : MonoBehaviour
             squareBraidTurns, braidTubeRadius, 160, 8);
 
         coreMaterial = MakeMaterial("Soulshot D Blue Metallic Enamel",
-            new Color(0.72f, 0.90f, 1f, 1f), BuildBlueMetalTexture(), 0.62f, 0.93f, false);
+            new Color(0.88f, 0.97f, 1f, 1f), BuildBlueMetalTexture(), 0.42f, 0.94f, false);
         if (coreMaterial.HasProperty("_EmissionColor"))
         {
             // A restrained blue self-lit component preserves the luminous blue without looking liquid.
@@ -158,14 +158,14 @@ public sealed class SoulshotVisual : MonoBehaviour
                     Mathf.Max(0f, Mathf.Cos((u + 0.24f) * Mathf.PI * 2f)), 18f) * 0.10f;
                 float fineBrushing = Mathf.Sin(u * Mathf.PI * 2f * 38f + v * 0.35f) * 0.012f;
                 float noise = (Noise(x, y) - 0.5f) * 0.035f;
-                float axialShade = 0.84f + 0.16f * Mathf.Sin(v * Mathf.PI);
+                float axialShade = 0.90f + 0.10f * Mathf.Sin(v * Mathf.PI);
                 float value = Mathf.Clamp(
-                    (0.76f + broadHighlight + secondaryHighlight + fineBrushing + noise) * axialShade,
-                    0.42f, 1f);
+                    (0.82f + broadHighlight + secondaryHighlight + fineBrushing + noise) * axialShade,
+                    0.58f, 1f);
 
                 pixels[y * size + x] = new Color32(
-                    (byte)Mathf.Clamp(Mathf.RoundToInt(48f * value), 0, 255),
-                    (byte)Mathf.Clamp(Mathf.RoundToInt(145f * value), 0, 255),
+                    (byte)Mathf.Clamp(Mathf.RoundToInt(56f * value), 0, 255),
+                    (byte)Mathf.Clamp(Mathf.RoundToInt(165f * value), 0, 255),
                     (byte)Mathf.Clamp(Mathf.RoundToInt(255f * value), 0, 255),
                     255);
             }
