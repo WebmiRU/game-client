@@ -64,9 +64,14 @@ public sealed class SoulshotVisual : MonoBehaviour
         // A long opaque capsule avoids the milky translucent shell over the blue glass.
         coreMesh = BuildCapsule(0.278f, 0.50f, 48, 16, 8);
         ringMesh = BuildTorus(0.292f, 0.022f, 48, 10);
-        // The pitch along the axis equals the pitch between neighbouring strands around the capsule,
-        // so crossing wires create square cells instead of long, flattened diamonds.
-        braidMesh = BuildBraid(0.311f, 0.248f, 6, 1.52f, 0.014f, 160, 8);
+        // On the unwrapped cylinder, square cells require the two strand families to cross at 90 degrees.
+        // Using 16 strands keeps several clearly visible square cells along this short metal sleeve.
+        const float braidRadius = 0.311f;
+        const float braidHalfLength = 0.248f;
+        const int braidStrands = 16;
+        float squareBraidTurns = braidHalfLength / (Mathf.PI * braidRadius);
+        braidMesh = BuildBraid(braidRadius, braidHalfLength, braidStrands,
+            squareBraidTurns, 0.012f, 160, 8);
 
         coreMaterial = MakeMaterial("Soulshot D Blue Glass", new Color(0.055f, 0.19f, 0.48f, 1f),
             BuildBlueGlassTexture(), 0.12f, 0.96f, false);
