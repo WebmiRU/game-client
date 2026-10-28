@@ -41,9 +41,10 @@ public sealed class SoulshotVisual : MonoBehaviour
         Light blueLight = glowObject.AddComponent<Light>();
         blueLight.type = LightType.Point;
         blueLight.color = new Color(0.08f, 0.28f, 1f, 1f);
-        // Intentionally strong enough to read in a scene without a Bloom post-process.
-        blueLight.intensity = 1.15f;
-        blueLight.range = 1.45f;
+        // Keep just a subtle blue tint on nearby surfaces; the capsule should read as matte,
+        // not as a glowing or highly polished object.
+        blueLight.intensity = 0.22f;
+        blueLight.range = 0.85f;
         blueLight.shadows = LightShadows.None;
     }
 
@@ -70,12 +71,12 @@ public sealed class SoulshotVisual : MonoBehaviour
         const float halfCylinder = CapsuleHalfCylinder;
         coreMesh = BuildCapsule(capsuleRadius, halfCylinder, 64, 24, 64);
 
-        coreMaterial = MakeMaterial("Soulshot D Deep Navy Blue Metallic Capsule",
-            Color.white, BuildBlueMetalTexture(), 0.48f, 0.94f, false);
+        coreMaterial = MakeMaterial("Soulshot D Matte Deep Navy Blue Capsule",
+            Color.white, BuildBlueMetalTexture(), 0.10f, 0.40f, false);
         if (coreMaterial.HasProperty("_EmissionColor"))
         {
             // Subtle blue emission, with the main appearance still coming from the metallic texture.
-            coreMaterial.SetColor("_EmissionColor", new Color(0.006f, 0.022f, 0.09f, 1f));
+            coreMaterial.SetColor("_EmissionColor", new Color(0.001f, 0.003f, 0.012f, 1f));
             coreMaterial.EnableKeyword("_EMISSION");
         }
         built = true;
@@ -159,19 +160,19 @@ public sealed class SoulshotVisual : MonoBehaviour
                 // Dark royal-blue enamel, similar to a Pepsi can; highlights are controlled
                 // and narrow, so the surface reads as painted metal rather than liquid.
                 float broadHighlight = Mathf.Pow(
-                    Mathf.Max(0f, Mathf.Cos((u - 0.22f) * Mathf.PI * 2f)), 14f) * 0.28f;
+                    Mathf.Max(0f, Mathf.Cos((u - 0.22f) * Mathf.PI * 2f)), 10f) * 0.10f;
                 float secondaryHighlight = Mathf.Pow(
-                    Mathf.Max(0f, Mathf.Cos((u + 0.24f) * Mathf.PI * 2f)), 24f) * 0.11f;
-                float fineBrushing = Mathf.Sin(u * Mathf.PI * 2f * 42f + v * 0.4f) * 0.008f;
-                float noise = (Noise(x, y) - 0.5f) * 0.018f;
-                float shine = Mathf.Clamp01(0.08f + broadHighlight + secondaryHighlight + fineBrushing + noise);
+                    Mathf.Max(0f, Mathf.Cos((u + 0.24f) * Mathf.PI * 2f)), 18f) * 0.035f;
+                float fineBrushing = Mathf.Sin(u * Mathf.PI * 2f * 42f + v * 0.4f) * 0.004f;
+                float noise = (Noise(x, y) - 0.5f) * 0.010f;
+                float shine = Mathf.Clamp01(0.06f + broadHighlight + secondaryHighlight + fineBrushing + noise);
 
                 // Deep, highly saturated navy/royal blue. Even the highlights stay blue,
                 // never drifting into cyan or pale sky-blue.
                 Color color = new Color(
-                    (2f + 5f * shine) / 255f,
-                    (6f + 18f * shine) / 255f,
-                    (48f + 124f * shine) / 255f,
+                    (3f + 4f * shine) / 255f,
+                    (7f + 12f * shine) / 255f,
+                    (42f + 86f * shine) / 255f,
                     1f);
 
                 if (inWeaveBand)
