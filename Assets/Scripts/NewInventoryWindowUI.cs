@@ -295,8 +295,8 @@ public sealed class NewInventoryWindowUI : MonoBehaviour
         const float innerWidth = 578f;
         const float gridTop = 66f;
         const float availableGridHeight = 232f;
-        const int columns = 7;
-        const int rows = 9;
+        const int columns = 9;
+        const int rows = 7;
 
         float scaleX = frameRect.width / 640f;
         float scaleY = frameRect.height / 360f;
@@ -320,8 +320,8 @@ public sealed class NewInventoryWindowUI : MonoBehaviour
     private void DrawInventoryGrid(Rect frameRect)
     {
         // Cells share the plain blue backing; only a common border and slim dividers are drawn.
-        const int columns = 7;
-        const int rows = 9;
+        const int columns = 9;
+        const int rows = 7;
         Rect gridRect = GetInventoryGridRect(frameRect);
 
         if (_blueBackgroundTexture == null || gridRect.width <= 0f || gridRect.height <= 0f)
