@@ -18,6 +18,7 @@ public sealed class InventoryWindowUI : MonoBehaviour
     private const int Rows = 7;
 
     public static bool IsOpen { get; private set; }
+    private static InventoryWindowUI _instance;
     private GameObject window;
     private Camera previewCamera;
     private RenderTexture previewTexture;
@@ -60,6 +61,7 @@ public sealed class InventoryWindowUI : MonoBehaviour
 
     private void Awake()
     {
+        _instance = this;
         uiFont = Resources.GetBuiltinResource<Font>("Arial.ttf");
         EnsureEventSystem();
         BuildCanvasAndWindow();
@@ -77,6 +79,7 @@ public sealed class InventoryWindowUI : MonoBehaviour
 
     private void OnDestroy()
     {
+        if (_instance == this) _instance = null;
         IsOpen = false;
         if (previewCamera != null)
         {
@@ -96,7 +99,13 @@ public sealed class InventoryWindowUI : MonoBehaviour
     /// <summary>Entry point used by the always-visible server HUD.</summary>
     public static void ToggleFromHUD()
     {
-        InventoryWindowUI inventory = FindFirstObjectByType<InventoryWindowUI>();
+        InventoryWindowUI inventory = _instance;
+        if (inventory == null)
+        {
+            inventory = FindFirstObjectByType<InventoryWindowUI>();
+            if (inventory != null) _instance = inventory;
+        }
+
         if (inventory == null)
         {
             GameObject ui = new GameObject("InventoryWindowUI");
@@ -104,7 +113,27 @@ public sealed class InventoryWindowUI : MonoBehaviour
             inventory = ui.AddComponent<InventoryWindowUI>();
         }
 
-        inventory.Toggle();
+        inventory.SetOpen(!IsOpen);
+        Debug.Log("InventoryWindowUI: HUD toggle -> " + (IsOpen ? "open" : "closed"));
+    }
+
+    /// <summary>
+    /// Draw from GameServerLoginUI's already-visible IMGUI pass so the toggle and
+    /// inventory window share one guaranteed rendering/input path.
+    /// </summary>
+    public static void DrawOverlayFromHUD()
+    {
+        InventoryWindowUI inventory = _instance;
+        if (inventory == null)
+        {
+            inventory = FindFirstObjectByType<InventoryWindowUI>();
+            if (inventory != null) _instance = inventory;
+        }
+
+        if (inventory != null && IsOpen)
+        {
+            inventory.DrawWindowGUI();
+        }
     }
 
     public void Toggle() => SetOpen(!IsOpen);
@@ -114,10 +143,21 @@ public sealed class InventoryWindowUI : MonoBehaviour
         IsOpen = open;
         if (window != null) window.SetActive(open);
         if (previewCamera != null) previewCamera.enabled = open;
-        if (open) RefreshCharacterPreview();
+        if (open)
+        {
+            try
+            {
+                RefreshCharacterPreview();
+            }
+            catch (System.Exception exception)
+            {
+                // A preview-model issue must never prevent the inventory frame from opening.
+                Debug.LogException(exception, this);
+            }
+        }
     }
 
-    private void OnGUI()
+    private void DrawWindowGUI()
     {
         if (!IsOpen) return;
 
