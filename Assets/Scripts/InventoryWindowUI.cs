@@ -180,8 +180,10 @@ public sealed class InventoryWindowUI : MonoBehaviour
         hudCanvasObject.transform.SetParent(transform, false);
         Canvas hudCanvas = hudCanvasObject.AddComponent<Canvas>();
         hudCanvas.renderMode = RenderMode.ScreenSpaceOverlay;
-        hudCanvas.sortingOrder = 1000;
+        // Put the HUD control above other scene canvases and debug overlays.
+        hudCanvas.sortingOrder = 32767;
         hudCanvas.overrideSorting = true;
+        hudCanvasObject.transform.SetAsLastSibling();
 
         CanvasScaler hudScaler = hudCanvasObject.AddComponent<CanvasScaler>();
         hudScaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
@@ -190,10 +192,10 @@ public sealed class InventoryWindowUI : MonoBehaviour
         hudScaler.matchWidthOrHeight = 0.5f;
         hudCanvasObject.AddComponent<GraphicRaycaster>();
 
-        // Large, high-contrast button in the top-left corner, outside the inventory window.
+        // Large, high-contrast button fixed to the bottom-right corner.
         GameObject toggleObject = CreateRect(hudCanvas.transform, "InventoryToggleButton",
-            new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(0f, 1f),
-            new Vector2(18f, -84f), new Vector2(258f, -18f));
+            new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(1f, 0f),
+            new Vector2(-310f, 18f), new Vector2(-18f, 88f));
         Image background = toggleObject.AddComponent<Image>();
         background.color = new Color(0.19f, 0.155f, 0.105f, 0.98f);
         background.raycastTarget = true;
@@ -213,9 +215,9 @@ public sealed class InventoryWindowUI : MonoBehaviour
         inventoryToggleButton.colors = colors;
         inventoryToggleButton.onClick.AddListener(Toggle);
 
-        inventoryToggleCaption = CreateText(toggleObject.transform, "Caption", "Открыть инвентарь  [I]", 15,
-            FontStyle.Bold, new Color(0.96f, 0.88f, 0.7f, 1f), new Vector2(240f, 66f), Vector2.zero);
-        Debug.Log("Inventory UI ready: use the top-left button or press I.");
+        inventoryToggleCaption = CreateText(toggleObject.transform, "Caption", "Открыть инвентарь  [I]", 16,
+            FontStyle.Bold, new Color(0.96f, 0.88f, 0.7f, 1f), new Vector2(286f, 70f), Vector2.zero);
+        Debug.Log("Inventory UI ready: use the bottom-right button or press I.");
     }
 
     private void RefreshInventoryToggleCaption()
