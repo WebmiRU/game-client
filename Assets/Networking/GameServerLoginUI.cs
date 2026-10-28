@@ -1825,10 +1825,13 @@ public sealed class GameServerLoginUI : MonoBehaviour
             }
 
             const float itemSize = 0.35f;
-            // The server heightmap and Unity Terrain may differ slightly. For rendering,
-            // use the surface actually visible in the client whenever it is available.
+            // The server heightmap can differ slightly from the client landscape.
+            // Always ground soulshots on the client's actual Terrain surface; never
+            // let the server Y coordinate pull a visible drop below that surface.
             float baseY = item.position.y;
-            if (isSoulshot && TryGetTerrainSurfaceY(item.position.x, item.position.z, out float localGroundY))
+            bool hasClientGround = isSoulshot &&
+                TryGetTerrainSurfaceY(item.position.x, item.position.z, out float localGroundY);
+            if (hasClientGround)
             {
                 baseY = localGroundY;
             }
@@ -1851,21 +1854,16 @@ public sealed class GameServerLoginUI : MonoBehaviour
                 view.transform.rotation = Quaternion.Euler(0f, 45f, 0f);
             }
 
-            GroundItemDropAnimation dropAnimation = view.GetComponent<GroundItemDropAnimation>();
-            if (isNewView)
+            // Ground drops appear already resting on the client landscape. Do not animate
+            // them from the server's Y coordinate: even a small heightmap mismatch would
+            // make the item visibly start below ground or sink during the animation.
+            GroundItemDropAnimation oldDropAnimation = view.GetComponent<GroundItemDropAnimation>();
+            if (oldDropAnimation != null)
             {
-                if (dropAnimation == null) dropAnimation = view.AddComponent<GroundItemDropAnimation>();
-                dropAnimation.Begin(restingPosition, 1f, 0.45f);
+                oldDropAnimation.enabled = false;
+                Destroy(oldDropAnimation);
             }
-            else if (dropAnimation != null && dropAnimation.IsFalling)
-            {
-                // Keep the landing point reconciled with the server while the item is falling.
-                dropAnimation.SetRestingPosition(restingPosition);
-            }
-            else
-            {
-                view.transform.position = restingPosition;
-            }
+            view.transform.position = restingPosition;
 
             string itemName = string.IsNullOrWhiteSpace(item.name)
                 ? (string.IsNullOrWhiteSpace(item.itemTemplate) ? "Предмет" : item.itemTemplate)
