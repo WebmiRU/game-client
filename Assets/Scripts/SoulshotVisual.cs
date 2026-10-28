@@ -12,7 +12,6 @@ public sealed class SoulshotVisual : MonoBehaviour
 {
     private static Mesh coreMesh;
     private static Mesh ringMesh;
-    private static Mesh braidMesh;
     private static Material coreMaterial;
     private static Material silverMaterial;
     private static bool built;
@@ -29,7 +28,6 @@ public sealed class SoulshotVisual : MonoBehaviour
         modelRoot.transform.localScale = Vector3.one * 0.82f;
 
         AddPart("DGradeBlueMetalCapsule", coreMesh, coreMaterial, Vector3.zero, false);
-        AddPart("SquareDiamondMetalWeave", braidMesh, silverMaterial, Vector3.zero, true);
         AddPart("LowerMetalCollar", ringMesh, silverMaterial, new Vector3(0f, -0.255f, 0f), true);
         AddPart("UpperMetalCollar", ringMesh, silverMaterial, new Vector3(0f, 0.255f, 0f), true);
 
@@ -72,18 +70,10 @@ public sealed class SoulshotVisual : MonoBehaviour
             grooveHalfLength, grooveTransition, 48, 16, 96);
         ringMesh = BuildTorus(0.260f, 0.018f, 48, 10);
 
-        // Keep every strand inside the body envelope: 0.266 + 0.012 = 0.278.
-        // The braid sits in the recess rather than protruding past the capsule ends.
-        const float braidRadius = 0.266f;
-        const float braidHalfLength = 0.248f;
-        const float braidTubeRadius = 0.012f;
-        const int braidStrands = 16;
-        float squareBraidTurns = braidHalfLength / (Mathf.PI * braidRadius);
-        braidMesh = BuildBraid(braidRadius, braidHalfLength, braidStrands,
-            squareBraidTurns, braidTubeRadius, 160, 8);
-
-        coreMaterial = MakeMaterial("Soulshot D Blue Metallic Enamel",
-            new Color(0.88f, 0.97f, 1f, 1f), BuildBlueMetalTexture(), 0.42f, 0.94f, false);
+        // The diamond braid is painted into the blue enamel texture, not built from thousands
+        // of individual wire vertices. It appears on the recessed centre surface.
+        coreMaterial = MakeMaterial("Soulshot D Pepsi Blue Metallic Enamel",
+            Color.white, BuildBlueMetalTexture(), 0.52f, 0.96f, false);
         if (coreMaterial.HasProperty("_EmissionColor"))
         {
             // A restrained blue self-lit component preserves the luminous blue without looking liquid.
@@ -135,38 +125,90 @@ public sealed class SoulshotVisual : MonoBehaviour
 
     private static Texture2D BuildBlueMetalTexture()
     {
-        const int size = 128;
-        Texture2D texture = new Texture2D(size, size, TextureFormat.RGBA32, true)
+        const int width = 512;
+        const int height = 512;
+        const int strands = 16;
+        const float braidHalfLength = 0.248f;
+        const float capsuleRadius = 0.278f;
+        const float halfCylinder = 0.50f;
+        float turns = braidHalfLength / (Mathf.PI * 0.266f);
+
+        // The capsule UV maps Y from -(halfCylinder + radius) to +(halfCylinder + radius).
+        // Restrict the woven pattern to the recessed centre band.
+        float uvStart = (halfCylinder + capsuleRadius - braidHalfLength) /
+            (2f * (halfCylinder + capsuleRadius));
+        float uvEnd = 1f - uvStart;
+
+        Texture2D texture = new Texture2D(width, height, TextureFormat.RGBA32, true)
         {
-            name = "Soulshot_D_Blue_Metal_Enamel_Albedo",
+            name = "Soulshot_D_Pepsi_Blue_Metal_With_Silver_Diamond_Weave",
             wrapMode = TextureWrapMode.Repeat,
-            filterMode = FilterMode.Trilinear
+            filterMode = FilterMode.Trilinear,
+            anisoLevel = 8
         };
-        Color32[] pixels = new Color32[size * size];
+        Color32[] pixels = new Color32[width * height];
 
-        for (int y = 0; y < size; y++)
+        for (int y = 0; y < height; y++)
         {
-            float v = y / (float)(size - 1);
-            for (int x = 0; x < size; x++)
+            float v = y / (float)(height - 1);
+            bool inWeaveBand = v >= uvStart && v <= uvEnd;
+            float t = inWeaveBand ? Mathf.InverseLerp(uvStart, uvEnd, v) : 0f;
+
+            for (int x = 0; x < width; x++)
             {
-                float u = x / (float)(size - 1);
+                float u = x / (float)(width - 1);
 
-                // Broad polished-aluminium reflections, rather than watery translucent streaks.
+                // Dark royal-blue enamel, similar to a Pepsi can; highlights are controlled
+                // and narrow, so the surface reads as painted metal rather than liquid.
                 float broadHighlight = Mathf.Pow(
-                    Mathf.Max(0f, Mathf.Cos((u - 0.22f) * Mathf.PI * 2f)), 10f) * 0.24f;
+                    Mathf.Max(0f, Mathf.Cos((u - 0.22f) * Mathf.PI * 2f)), 14f) * 0.28f;
                 float secondaryHighlight = Mathf.Pow(
-                    Mathf.Max(0f, Mathf.Cos((u + 0.24f) * Mathf.PI * 2f)), 18f) * 0.10f;
-                float fineBrushing = Mathf.Sin(u * Mathf.PI * 2f * 38f + v * 0.35f) * 0.012f;
-                float noise = (Noise(x, y) - 0.5f) * 0.035f;
-                float axialShade = 0.90f + 0.10f * Mathf.Sin(v * Mathf.PI);
-                float value = Mathf.Clamp(
-                    (0.82f + broadHighlight + secondaryHighlight + fineBrushing + noise) * axialShade,
-                    0.58f, 1f);
+                    Mathf.Max(0f, Mathf.Cos((u + 0.24f) * Mathf.PI * 2f)), 24f) * 0.11f;
+                float fineBrushing = Mathf.Sin(u * Mathf.PI * 2f * 42f + v * 0.4f) * 0.008f;
+                float noise = (Noise(x, y) - 0.5f) * 0.018f;
+                float shine = Mathf.Clamp01(0.08f + broadHighlight + secondaryHighlight + fineBrushing + noise);
 
-                pixels[y * size + x] = new Color32(
-                    (byte)Mathf.Clamp(Mathf.RoundToInt(56f * value), 0, 255),
-                    (byte)Mathf.Clamp(Mathf.RoundToInt(165f * value), 0, 255),
-                    (byte)Mathf.Clamp(Mathf.RoundToInt(255f * value), 0, 255),
+                Color color = new Color(
+                    (5f + 10f * shine) / 255f,
+                    (24f + 42f * shine) / 255f,
+                    (92f + 116f * shine) / 255f,
+                    1f);
+
+                if (inWeaveBand)
+                {
+                    // Two opposing diagonal strand families. Matching their pitch on the
+                    // unwrapped cylinder keeps the diamond cells close to square.
+                    float phaseA = Mathf.Repeat((u - turns * t) * strands, 1f);
+                    float phaseB = Mathf.Repeat((u + turns * t) * strands, 1f);
+                    float distA = Mathf.Min(phaseA, 1f - phaseA);
+                    float distB = Mathf.Min(phaseB, 1f - phaseB);
+                    float lineDistance = Mathf.Min(distA, distB);
+
+                    // A narrow shaded edge and pale centre imitate round polished wires.
+                    if (lineDistance < 0.115f)
+                    {
+                        float edge = Mathf.InverseLerp(0.115f, 0.028f, lineDistance);
+                        Color wireEdge = new Color(0.19f, 0.29f, 0.43f, 1f);
+                        Color wireMetal = new Color(0.48f, 0.62f, 0.78f, 1f);
+                        Color wireHighlight = new Color(0.82f, 0.91f, 1f, 1f);
+                        color = Color.Lerp(color, Color.Lerp(wireEdge, wireMetal, edge), 0.96f);
+
+                        if (lineDistance < 0.045f)
+                        {
+                            color = Color.Lerp(color, wireHighlight,
+                                Mathf.InverseLerp(0.045f, 0.0f, lineDistance) * 0.9f);
+                        }
+
+                        // Slightly brighter intersections make the crossing pattern legible at game distance.
+                        if (distA < 0.075f && distB < 0.075f)
+                            color = Color.Lerp(color, new Color(0.88f, 0.94f, 1f, 1f), 0.5f);
+                    }
+                }
+
+                pixels[y * width + x] = new Color32(
+                    (byte)Mathf.Clamp(Mathf.RoundToInt(color.r * 255f), 0, 255),
+                    (byte)Mathf.Clamp(Mathf.RoundToInt(color.g * 255f), 0, 255),
+                    (byte)Mathf.Clamp(Mathf.RoundToInt(color.b * 255f), 0, 255),
                     255);
             }
         }
@@ -339,64 +381,4 @@ public sealed class SoulshotVisual : MonoBehaviour
         return mesh;
     }
 
-    private static Mesh BuildBraid(float radius, float halfLength, int strands, float turns,
-        float tubeRadius, int pathSegments, int tubeSides)
-    {
-        List<Vector3> vertices = new List<Vector3>();
-        List<Vector2> uv = new List<Vector2>();
-        List<int> triangles = new List<int>();
-        for (int direction = 0; direction < 2; direction++)
-        {
-            for (int strand = 0; strand < strands; strand++)
-            {
-                float phase = strand / (float)strands * Mathf.PI * 2f;
-                for (int i = 0; i <= pathSegments; i++)
-                {
-                    float t = i / (float)pathSegments;
-                    Vector3 center = BraidPoint(t, phase, direction, radius, halfLength, turns);
-                    float t0 = Mathf.Max(0f, t - 0.002f);
-                    float t1 = Mathf.Min(1f, t + 0.002f);
-                    Vector3 tangent = (BraidPoint(t1, phase, direction, radius, halfLength, turns)
-                        - BraidPoint(t0, phase, direction, radius, halfLength, turns)).normalized;
-                    Vector3 side = Vector3.Cross(tangent, Vector3.up).normalized;
-                    if (side.sqrMagnitude < 0.001f) side = Vector3.right;
-                    Vector3 up = Vector3.Cross(tangent, side).normalized;
-                    int rowStart = vertices.Count;
-                    for (int tube = 0; tube < tubeSides; tube++)
-                    {
-                        float a = tube / (float)tubeSides * Mathf.PI * 2f;
-                        Vector3 normal = side * Mathf.Cos(a) + up * Mathf.Sin(a);
-                        vertices.Add(center + normal * tubeRadius);
-                        uv.Add(new Vector2(t, tube / (float)tubeSides));
-                    }
-                    if (i == 0) continue;
-                    int prev = rowStart - tubeSides;
-                    for (int tube = 0; tube < tubeSides; tube++)
-                    {
-                        int next = (tube + 1) % tubeSides;
-                        triangles.Add(prev + tube);
-                        triangles.Add(prev + next);
-                        triangles.Add(rowStart + tube);
-                        triangles.Add(prev + next);
-                        triangles.Add(rowStart + next);
-                        triangles.Add(rowStart + tube);
-                    }
-                }
-            }
-        }
-        Mesh mesh = new Mesh { name = "Soulshot_Crossed_Diamond_Braid_Mesh" };
-        mesh.SetVertices(vertices);
-        mesh.SetUVs(0, uv);
-        mesh.SetTriangles(triangles, 0);
-        mesh.RecalculateNormals();
-        mesh.RecalculateBounds();
-        return mesh;
-    }
-
-    private static Vector3 BraidPoint(float t, float phase, int direction, float radius,
-        float halfLength, float turns)
-    {
-        float a = phase + (direction == 0 ? 1f : -1f) * t * turns * Mathf.PI * 2f;
-        return new Vector3(Mathf.Cos(a) * radius, Mathf.Lerp(-halfLength, halfLength, t), Mathf.Sin(a) * radius);
-    }
 }
