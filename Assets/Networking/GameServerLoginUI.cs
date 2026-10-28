@@ -1711,8 +1711,9 @@ public sealed class GameServerLoginUI : MonoBehaviour
             if (item == null || string.IsNullOrWhiteSpace(item.id) || item.position == null) continue;
             visibleItemIDs.Add(item.id);
             bool isSoulshot = IsSoulshotItem(item);
+            bool isNewView = !_groundItemViews.TryGetValue(item.id, out GameObject view) || view == null;
 
-            if (!_groundItemViews.TryGetValue(item.id, out GameObject view) || view == null)
+            if (isNewView)
             {
                 if (isSoulshot)
                 {
@@ -1740,19 +1741,36 @@ public sealed class GameServerLoginUI : MonoBehaviour
             // with a local Terrain sample: mismatched Terrain transforms can bury small models.
             float baseY = item.position.y;
 
+            Vector3 restingPosition;
             if (isSoulshot)
             {
                 view.transform.localScale = Vector3.one;
                 // The horizontal braid reaches about 0.265 world units from the centre.
                 // Keep an additional 3.5 cm clearance so the metal does not clip into the ground.
-                view.transform.position = new Vector3(item.position.x, baseY + 0.30f, item.position.z);
+                restingPosition = new Vector3(item.position.x, baseY + 0.30f, item.position.z);
                 view.transform.rotation = Quaternion.Euler(0f, 0f, 90f);
             }
             else
             {
                 view.transform.localScale = Vector3.one * itemSize;
-                view.transform.position = new Vector3(item.position.x, baseY + itemSize * 0.5f, item.position.z);
+                restingPosition = new Vector3(item.position.x, baseY + itemSize * 0.5f, item.position.z);
                 view.transform.rotation = Quaternion.Euler(0f, 45f, 0f);
+            }
+
+            GroundItemDropAnimation dropAnimation = view.GetComponent<GroundItemDropAnimation>();
+            if (isNewView)
+            {
+                if (dropAnimation == null) dropAnimation = view.AddComponent<GroundItemDropAnimation>();
+                dropAnimation.Begin(restingPosition, 1f, 0.45f);
+            }
+            else if (dropAnimation != null && dropAnimation.IsFalling)
+            {
+                // Keep the landing point reconciled with the server while the item is falling.
+                dropAnimation.SetRestingPosition(restingPosition);
+            }
+            else
+            {
+                view.transform.position = restingPosition;
             }
 
             string itemName = string.IsNullOrWhiteSpace(item.name)
