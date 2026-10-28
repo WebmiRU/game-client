@@ -941,11 +941,14 @@ public class PlayerController : MonoBehaviour
         Mouse mouse = Mouse.current;
         bool pointerOverInventoryToggle = mouse != null &&
             GameServerLoginUI.IsPointerOverInventoryToggle(mouse.position.ReadValue());
-        bool worldInputBlocked = NewInventoryWindowUI.IsOpen || pointerOverInventoryToggle;
+        bool pointerOverInventoryWindow = mouse != null &&
+            NewInventoryWindowUI.BlocksWorldInputAt(mouse.position.ReadValue());
+        bool worldInputBlocked = pointerOverInventoryWindow || pointerOverInventoryToggle;
 
         if (worldInputBlocked)
         {
-            // UI clicks must never select targets, issue attacks, or start click-to-move.
+            // Clicks on the inventory itself must not select targets or start click-to-move.
+            // Outside the window, world interaction remains enabled even while it is open.
             if (_hoveredWorldTarget != null)
             {
                 _hoveredWorldTarget.SetHovered(false);
@@ -957,8 +960,8 @@ public class PlayerController : MonoBehaviour
             UpdateHoveredWorldTarget();
         }
 
-        // The inventory toggle is IMGUI, so exclude its screen rectangle explicitly:
-        // EventSystem.IsPointerOverGameObject does not detect IMGUI controls.
+        // IMGUI controls are checked by their own screen rectangles because
+        // EventSystem.IsPointerOverGameObject does not detect them.
         if (!worldInputBlocked && mouse != null && mouse.leftButton.wasPressedThisFrame)
         {
             TrySetMoveTargetFromMouse();
