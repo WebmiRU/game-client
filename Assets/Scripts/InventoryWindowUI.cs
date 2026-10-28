@@ -81,6 +81,20 @@ public sealed class InventoryWindowUI : MonoBehaviour
         if (hudButtonBorder != null) Destroy(hudButtonBorder);
     }
 
+    /// <summary>Entry point used by the always-visible server HUD.</summary>
+    public static void ToggleFromHUD()
+    {
+        InventoryWindowUI inventory = FindFirstObjectByType<InventoryWindowUI>();
+        if (inventory == null)
+        {
+            GameObject ui = new GameObject("InventoryWindowUI");
+            DontDestroyOnLoad(ui);
+            inventory = ui.AddComponent<InventoryWindowUI>();
+        }
+
+        inventory.Toggle();
+    }
+
     public void Toggle() => SetOpen(!IsOpen);
 
     public void SetOpen(bool open)
