@@ -37,9 +37,10 @@ public sealed class SoulshotVisual : MonoBehaviour
         glowObject.transform.SetParent(modelRoot.transform, false);
         Light blueLight = glowObject.AddComponent<Light>();
         blueLight.type = LightType.Point;
-        blueLight.color = new Color(0.12f, 0.34f, 1f, 1f);
-        blueLight.intensity = 0.18f;
-        blueLight.range = 0.85f;
+        blueLight.color = new Color(0.08f, 0.28f, 1f, 1f);
+        // Intentionally strong enough to read in a scene without a Bloom post-process.
+        blueLight.intensity = 1.15f;
+        blueLight.range = 1.45f;
         blueLight.shadows = LightShadows.None;
     }
 
@@ -77,7 +78,8 @@ public sealed class SoulshotVisual : MonoBehaviour
             BuildBlueGlassTexture(), 0.12f, 0.96f, false);
         if (coreMaterial.HasProperty("_EmissionColor"))
         {
-            coreMaterial.SetColor("_EmissionColor", new Color(0.012f, 0.055f, 0.22f, 1f));
+            // A visibly luminous saturated blue surface, not just a point-light stain on the ground.
+            coreMaterial.SetColor("_EmissionColor", new Color(0.035f, 0.28f, 1.6f, 1f));
             coreMaterial.EnableKeyword("_EMISSION");
         }
         silverMaterial = MakeMaterial("Soulshot Silver Diamond Braid", new Color(0.82f, 0.84f, 0.81f, 1f),
