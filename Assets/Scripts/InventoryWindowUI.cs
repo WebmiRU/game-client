@@ -35,6 +35,20 @@ public sealed class InventoryWindowUI : MonoBehaviour
     private readonly List<Material> previewMaterials = new List<Material>();
     private string playerName = "player1";
 
+    // The inventory is drawn through IMGUI for a reliable overlay, matching the
+    // always-visible inventory toggle. The older Canvas layout remains only as a
+    // source for the character preview texture.
+    private Texture2D _guiWhiteTexture;
+    private Texture2D _guiTransparentTexture;
+    private GUIStyle _guiTitleStyle;
+    private GUIStyle _guiSectionStyle;
+    private GUIStyle _guiLabelStyle;
+    private GUIStyle _guiSmallLabelStyle;
+    private GUIStyle _guiSlotLabelStyle;
+    private GUIStyle _guiButtonStyle;
+    private GUIStyle _guiTabStyle;
+    private bool _showQuestItems;
+
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     private static void Bootstrap()
     {
@@ -75,6 +89,8 @@ public sealed class InventoryWindowUI : MonoBehaviour
             Destroy(previewTexture);
         }
         DestroyPreviewResources();
+        if (_guiWhiteTexture != null) Destroy(_guiWhiteTexture);
+        if (_guiTransparentTexture != null) Destroy(_guiTransparentTexture);
     }
 
     /// <summary>Entry point used by the always-visible server HUD.</summary>
@@ -99,6 +115,311 @@ public sealed class InventoryWindowUI : MonoBehaviour
         if (window != null) window.SetActive(open);
         if (previewCamera != null) previewCamera.enabled = open;
         if (open) RefreshCharacterPreview();
+    }
+
+    private void OnGUI()
+    {
+        if (!IsOpen) return;
+
+        EnsureInventoryGuiStyles();
+
+        float scale = Mathf.Clamp(
+            Mathf.Min(Screen.width / 1920f, Screen.height / 1080f),
+            0.55f, 1.35f);
+        float width = Mathf.Min(1360f * scale, Screen.width - 24f);
+        float height = Mathf.Min(760f * scale, Screen.height - 24f);
+        float x = (Screen.width - width) * 0.5f;
+        float y = (Screen.height - height) * 0.5f;
+
+        _guiTitleStyle.fontSize = Mathf.RoundToInt(23f * scale);
+        _guiSectionStyle.fontSize = Mathf.Max(9, Mathf.RoundToInt(13f * scale));
+        _guiLabelStyle.fontSize = Mathf.Max(9, Mathf.RoundToInt(14f * scale));
+        _guiSmallLabelStyle.fontSize = Mathf.Max(8, Mathf.RoundToInt(11f * scale));
+        _guiSlotLabelStyle.fontSize = Mathf.Max(7, Mathf.RoundToInt(9f * scale));
+        _guiButtonStyle.fontSize = Mathf.Max(9, Mathf.RoundToInt(15f * scale));
+        _guiTabStyle.fontSize = Mathf.Max(9, Mathf.RoundToInt(14f * scale));
+
+        Color oldGuiColor = GUI.color;
+
+        Rect frame = new Rect(x, y, width, height);
+        DrawGuiRect(frame, new Color(0.42f, 0.32f, 0.21f, 1f));
+        DrawGuiRect(InsetGuiRect(frame, 4f * scale), new Color(0.035f, 0.031f, 0.025f, 1f));
+        Rect surface = InsetGuiRect(frame, 7f * scale);
+        DrawGuiRect(surface, new Color(0.105f, 0.095f, 0.079f, 0.99f));
+
+        Rect header = new Rect(surface.x + 2f * scale, surface.y + 2f * scale,
+            surface.width - 4f * scale, 50f * scale);
+        DrawGuiRect(header, new Color(0.16f, 0.145f, 0.12f, 1f));
+        DrawGuiRect(new Rect(header.x, header.yMax - 2f * scale, header.width, 2f * scale),
+            new Color(0.48f, 0.38f, 0.25f, 1f));
+        GUI.Label(new Rect(header.x, header.y + 4f * scale, header.width, 38f * scale),
+            "Инвентарь", _guiTitleStyle);
+
+        Rect closeRect = new Rect(frame.xMax - 50f * scale, frame.y + 14f * scale,
+            32f * scale, 30f * scale);
+        if (DrawInventoryButton(closeRect, "×", new Color(0.13f, 0.115f, 0.095f, 1f)))
+        {
+            SetOpen(false);
+            GUI.color = oldGuiColor;
+            return;
+        }
+
+        float panelY = y + 70f * scale;
+        float panelHeight = height - 102f * scale;
+        float leftX = x + 18f * scale;
+        float leftWidth = 440f * scale;
+        float rightX = x + 468f * scale;
+        float rightWidth = width - 486f * scale - 18f * scale;
+
+        Rect leftPanel = new Rect(leftX, panelY, leftWidth, panelHeight);
+        Rect rightPanel = new Rect(rightX, panelY, rightWidth, panelHeight);
+        DrawGuiRect(leftPanel, new Color(0.045f, 0.042f, 0.036f, 1f));
+        DrawGuiRect(InsetGuiRect(leftPanel, 2f * scale), new Color(0.09f, 0.082f, 0.068f, 1f));
+        DrawGuiRect(rightPanel, new Color(0.045f, 0.042f, 0.036f, 1f));
+        DrawGuiRect(InsetGuiRect(rightPanel, 2f * scale), new Color(0.075f, 0.069f, 0.058f, 1f));
+
+        GUI.Label(new Rect(leftPanel.x + 40f * scale, leftPanel.y + 9f * scale,
+            leftPanel.width - 80f * scale, 24f * scale), "ПЕРСОНАЖ", _guiSectionStyle);
+
+        Rect viewport = new Rect(leftPanel.x + 112f * scale, leftPanel.y + 65f * scale,
+            216f * scale, 424f * scale);
+        DrawGuiRect(viewport, new Color(0.025f, 0.024f, 0.021f, 1f));
+        DrawGuiRect(InsetGuiRect(viewport, 2f * scale), new Color(0.12f, 0.108f, 0.087f, 1f));
+        Rect viewportInner = InsetGuiRect(viewport, 4f * scale);
+        DrawGuiRect(viewportInner, new Color(0.045f, 0.043f, 0.037f, 1f));
+        if (previewTexture != null)
+        {
+            GUI.DrawTexture(InsetGuiRect(viewportInner, 2f * scale), previewTexture,
+                ScaleMode.ScaleToFit, true);
+        }
+
+        string[] leftSlots = { "Голова", "Серьга", "Ожерелье", "Броня", "Перчатки", "Штаны", "Обувь" };
+        string[] rightSlots = { "Украш.", "Щит", "Кольцо", "Кольцо", "Пояс", "Оружие", "Костюм" };
+        for (int i = 0; i < leftSlots.Length; i++)
+        {
+            float slotY = leftPanel.y + (52f + i * 69f) * scale;
+            DrawEquipmentSlot(new Rect(leftPanel.x + 9f * scale, slotY,
+                54f * scale, 54f * scale), leftSlots[i], scale);
+            DrawEquipmentSlot(new Rect(leftPanel.xMax - 63f * scale, slotY,
+                54f * scale, 54f * scale), rightSlots[i], scale);
+        }
+
+        GUI.Label(new Rect(leftPanel.x + 80f * scale, leftPanel.y + 505f * scale,
+            leftPanel.width - 160f * scale, 25f * scale), playerName, _guiLabelStyle);
+        string[] lowerSlots = { "Пояс", "Рубашка", "Талисман" };
+        for (int i = 0; i < lowerSlots.Length; i++)
+        {
+            DrawEquipmentSlot(new Rect(leftPanel.x + (137f + i * 58f) * scale,
+                leftPanel.y + 551f * scale, 44f * scale, 45f * scale), lowerSlots[i], scale);
+        }
+
+        Rect itemsTab = new Rect(rightPanel.x + 18f * scale, rightPanel.y + 12f * scale,
+            140f * scale, 36f * scale);
+        Rect questTab = new Rect(rightPanel.x + 166f * scale, rightPanel.y + 12f * scale,
+            132f * scale, 36f * scale);
+        if (DrawInventoryTab(itemsTab, "ВЕЩИ", !_showQuestItems, scale)) _showQuestItems = false;
+        if (DrawInventoryTab(questTab, "КВЕСТ", _showQuestItems, scale)) _showQuestItems = true;
+        GUI.Label(new Rect(rightPanel.xMax - 160f * scale, rightPanel.y + 14f * scale,
+            140f * scale, 32f * scale), "0 / 80", _guiLabelStyle);
+
+        float gridWidth = Mathf.Min(632f * scale, rightPanel.width - 30f * scale);
+        float gridHeight = Mathf.Min(469f * scale, panelHeight - 150f * scale);
+        Rect gridBack = new Rect(rightPanel.center.x - gridWidth * 0.5f,
+            rightPanel.y + 58f * scale, gridWidth, gridHeight);
+        DrawGuiRect(gridBack, new Color(0.025f, 0.024f, 0.021f, 1f));
+        DrawGuiRect(InsetGuiRect(gridBack, 3f * scale), new Color(0.13f, 0.118f, 0.098f, 1f));
+
+        float gap = 6f * scale;
+        float cellWidth = Mathf.Min(68f * scale,
+            (gridBack.width - 20f * scale - (Columns - 1) * gap) / Columns);
+        float cellHeight = Mathf.Min(58f * scale,
+            (gridBack.height - 20f * scale - (Rows - 1) * gap) / Rows);
+        float cellsWidth = Columns * cellWidth + (Columns - 1) * gap;
+        float cellsHeight = Rows * cellHeight + (Rows - 1) * gap;
+        float cellsX = gridBack.center.x - cellsWidth * 0.5f;
+        float cellsY = gridBack.y + (gridBack.height - cellsHeight) * 0.5f;
+        for (int row = 0; row < Rows; row++)
+        {
+            for (int column = 0; column < Columns; column++)
+            {
+                Rect cell = new Rect(cellsX + column * (cellWidth + gap),
+                    cellsY + row * (cellHeight + gap), cellWidth, cellHeight);
+                DrawGuiRect(cell, new Color(0.18f, 0.163f, 0.132f, 1f));
+                DrawGuiRect(InsetGuiRect(cell, 1f * scale), new Color(0.055f, 0.052f, 0.045f, 1f));
+                DrawGuiRect(new Rect(cell.x + 2f * scale, cell.y + 2f * scale,
+                    Mathf.Max(1f, cell.width - 4f * scale), 1f * scale),
+                    new Color(0.13f, 0.122f, 0.104f, 1f));
+            }
+        }
+
+        float railX = gridBack.xMax - 15f * scale;
+        DrawGuiRect(new Rect(railX, gridBack.y + 8f * scale, 7f * scale,
+            gridBack.height - 16f * scale), new Color(0.18f, 0.16f, 0.13f, 1f));
+        DrawGuiRect(new Rect(railX - 4f * scale, gridBack.y + 7f * scale,
+            15f * scale, 18f * scale), new Color(0.28f, 0.25f, 0.20f, 1f));
+        DrawGuiRect(new Rect(railX - 4f * scale, gridBack.yMax - 25f * scale,
+            15f * scale, 18f * scale), new Color(0.28f, 0.25f, 0.20f, 1f));
+
+        float footerY = rightPanel.yMax - 76f * scale;
+        DrawGuiRect(new Rect(rightPanel.x + 16f * scale, footerY,
+            rightPanel.width - 32f * scale, 1f * scale), new Color(0.31f, 0.26f, 0.19f, 1f));
+        GUI.Label(new Rect(rightPanel.x + 20f * scale, footerY + 10f * scale,
+            190f * scale, 26f * scale), "◉   0", _guiLabelStyle);
+        GUI.Label(new Rect(rightPanel.x + 215f * scale, footerY + 10f * scale,
+            150f * scale, 26f * scale), "Вес: 0.0%", _guiSmallLabelStyle);
+        Rect weightBar = new Rect(rightPanel.x + 350f * scale, footerY + 17f * scale,
+            250f * scale, 10f * scale);
+        DrawGuiRect(weightBar, new Color(0.025f, 0.024f, 0.02f, 1f));
+        DrawGuiRect(new Rect(weightBar.x + 2f * scale, weightBar.y + 2f * scale,
+            2f * scale, 6f * scale), new Color(0.62f, 0.47f, 0.16f, 1f));
+
+        Rect trashRect = new Rect(rightPanel.xMax - 70f * scale, footerY + 4f * scale,
+            48f * scale, 42f * scale);
+        DrawInventoryButton(trashRect, "▣", new Color(0.13f, 0.12f, 0.1f, 1f));
+
+        GUI.color = oldGuiColor;
+    }
+
+    private void EnsureInventoryGuiStyles()
+    {
+        if (_guiWhiteTexture != null && _guiTransparentTexture != null && _guiButtonStyle != null)
+            return;
+
+        _guiWhiteTexture = CreateGuiTexture(Color.white, "InventoryGuiWhite");
+        _guiTransparentTexture = CreateGuiTexture(Color.clear, "InventoryGuiTransparent");
+
+        _guiTitleStyle = new GUIStyle(GUI.skin.label)
+        {
+            alignment = TextAnchor.MiddleCenter,
+            fontStyle = FontStyle.Normal,
+            wordWrap = false
+        };
+        _guiTitleStyle.normal.textColor = new Color(0.9f, 0.85f, 0.75f, 1f);
+
+        _guiSectionStyle = new GUIStyle(GUI.skin.label)
+        {
+            alignment = TextAnchor.MiddleCenter,
+            fontStyle = FontStyle.Bold,
+            wordWrap = false
+        };
+        _guiSectionStyle.normal.textColor = new Color(0.69f, 0.60f, 0.45f, 1f);
+
+        _guiLabelStyle = new GUIStyle(GUI.skin.label)
+        {
+            alignment = TextAnchor.MiddleCenter,
+            wordWrap = false
+        };
+        _guiLabelStyle.normal.textColor = new Color(0.84f, 0.78f, 0.65f, 1f);
+
+        _guiSmallLabelStyle = new GUIStyle(_guiLabelStyle)
+        {
+            alignment = TextAnchor.MiddleLeft
+        };
+        _guiSmallLabelStyle.normal.textColor = new Color(0.75f, 0.69f, 0.57f, 1f);
+
+        _guiSlotLabelStyle = new GUIStyle(GUI.skin.label)
+        {
+            alignment = TextAnchor.LowerCenter,
+            wordWrap = true,
+            clipping = TextClipping.Clip
+        };
+        _guiSlotLabelStyle.normal.textColor = new Color(0.62f, 0.57f, 0.47f, 1f);
+
+        _guiButtonStyle = new GUIStyle(GUI.skin.button)
+        {
+            alignment = TextAnchor.MiddleCenter,
+            fontStyle = FontStyle.Bold,
+            wordWrap = false,
+            padding = new RectOffset(2, 2, 1, 1)
+        };
+        SetGuiButtonBackground(_guiButtonStyle, _guiTransparentTexture);
+        _guiButtonStyle.normal.textColor = new Color(0.92f, 0.85f, 0.7f, 1f);
+        _guiButtonStyle.hover.textColor = Color.white;
+        _guiButtonStyle.active.textColor = Color.white;
+        _guiButtonStyle.focused.textColor = Color.white;
+
+        _guiTabStyle = new GUIStyle(_guiButtonStyle);
+        _guiTabStyle.fontStyle = FontStyle.Normal;
+    }
+
+    private static Texture2D CreateGuiTexture(Color color, string textureName)
+    {
+        Texture2D texture = new Texture2D(1, 1, TextureFormat.RGBA32, false)
+        {
+            name = textureName,
+            hideFlags = HideFlags.HideAndDontSave,
+            filterMode = FilterMode.Point,
+            wrapMode = TextureWrapMode.Clamp
+        };
+        texture.SetPixel(0, 0, color);
+        texture.Apply(false, true);
+        return texture;
+    }
+
+    private static void SetGuiButtonBackground(GUIStyle style, Texture2D texture)
+    {
+        style.normal.background = texture;
+        style.hover.background = texture;
+        style.active.background = texture;
+        style.focused.background = texture;
+        style.onNormal.background = texture;
+        style.onHover.background = texture;
+        style.onActive.background = texture;
+        style.onFocused.background = texture;
+    }
+
+    private void DrawGuiRect(Rect rect, Color color)
+    {
+        if (_guiWhiteTexture == null) return;
+        Color previous = GUI.color;
+        GUI.color = color;
+        GUI.DrawTexture(rect, _guiWhiteTexture, ScaleMode.StretchToFill, false);
+        GUI.color = previous;
+    }
+
+    private bool DrawInventoryButton(Rect rect, string label, Color normalColor)
+    {
+        bool hovered = rect.Contains(Event.current.mousePosition);
+        Color fill = normalColor;
+        if (hovered) fill = Color.Lerp(normalColor, new Color(0.58f, 0.46f, 0.28f, 1f), 0.35f);
+        if (hovered && Event.current.button == 0 &&
+            (Event.current.type == EventType.MouseDown || Event.current.type == EventType.MouseUp))
+            fill = Color.Lerp(normalColor, Color.black, 0.25f);
+        DrawGuiRect(rect, new Color(0.42f, 0.33f, 0.22f, 1f));
+        DrawGuiRect(InsetGuiRect(rect, 1.5f), fill);
+        return GUI.Button(rect, label, _guiButtonStyle);
+    }
+
+    private bool DrawInventoryTab(Rect rect, string label, bool selected, float scale)
+    {
+        Color color = selected
+            ? new Color(0.30f, 0.25f, 0.18f, 1f)
+            : new Color(0.12f, 0.11f, 0.09f, 1f);
+        bool clicked = DrawInventoryButton(rect, label, color);
+        if (!selected)
+        {
+            DrawGuiRect(new Rect(rect.x + 5f * scale, rect.yMax - 2f * scale,
+                rect.width - 10f * scale, 1f * scale), new Color(0.28f, 0.24f, 0.18f, 1f));
+        }
+        return clicked;
+    }
+
+    private void DrawEquipmentSlot(Rect rect, string label, float scale)
+    {
+        DrawGuiRect(rect, new Color(0.24f, 0.21f, 0.17f, 1f));
+        DrawGuiRect(InsetGuiRect(rect, 2f * scale), new Color(0.055f, 0.052f, 0.045f, 1f));
+        DrawGuiRect(new Rect(rect.x + 3f * scale, rect.y + 3f * scale,
+            Mathf.Max(1f, rect.width - 6f * scale), 1f * scale),
+            new Color(0.15f, 0.137f, 0.115f, 1f));
+        GUI.Label(new Rect(rect.x + 1f * scale, rect.yMax - 20f * scale,
+            rect.width - 2f * scale, 17f * scale), label, _guiSlotLabelStyle);
+    }
+
+    private static Rect InsetGuiRect(Rect rect, float inset)
+    {
+        return new Rect(rect.x + inset, rect.y + inset,
+            Mathf.Max(0f, rect.width - 2f * inset),
+            Mathf.Max(0f, rect.height - 2f * inset));
     }
 
     private static void EnsureEventSystem()
@@ -132,7 +453,9 @@ public sealed class InventoryWindowUI : MonoBehaviour
     private void BuildCanvasAndWindow()
     {
         GameObject canvasObject = new GameObject("InventoryCanvas");
-        canvasObject.transform.SetParent(transform, false);
+        // Keep this as a genuine root Canvas. The visible inventory itself is drawn
+        // in OnGUI so it does not depend on Canvas sorting or scene hierarchy.
+        DontDestroyOnLoad(canvasObject);
         Canvas canvas = canvasObject.AddComponent<Canvas>();
         canvas.renderMode = RenderMode.ScreenSpaceOverlay;
         canvas.sortingOrder = 100;
@@ -179,6 +502,13 @@ public sealed class InventoryWindowUI : MonoBehaviour
 
         BuildPaperDoll(interior.transform);
         BuildItemGrid(interior.transform);
+
+        // This Canvas supplied the RenderTexture target for the paper-doll preview,
+        // but its visual layout is deliberately disabled: OnGUI draws the inventory
+        // through the same reliable path as the working bottom-right toggle.
+        canvas.enabled = false;
+        GraphicRaycaster raycaster = canvasObject.GetComponent<GraphicRaycaster>();
+        if (raycaster != null) raycaster.enabled = false;
     }
 
 
