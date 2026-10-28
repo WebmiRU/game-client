@@ -3,29 +3,18 @@ using UnityEngine;
 using UnityEngine.Rendering;
 
 /// <summary>
-/// Procedural 3D Soulshot D model based on the original spiritshot reference:
-/// a long, faceted blue crystal held by two dark, engraved metal end caps.
-/// The object is built along local Y and the world-item view rotates it onto its side.
+/// Procedural low-poly model for the blue D-grade Soulshot reference.
+/// A single smooth capsule mesh with one dark-blue metallic texture containing the silver diamond weave.
+/// No particles, bloom, aura or billboard glow are created.
 /// </summary>
 [DisallowMultipleComponent]
 public sealed class SoulshotVisual : MonoBehaviour
 {
-    private static Mesh crystalMesh;
-    private static Mesh endCapMesh;
-    private static Mesh accentRingMesh;
-    private static Mesh badgeFrameMesh;
-    private static Mesh badgeInsetMesh;
-    private static Mesh badgeGemMesh;
-
-    private static Material[] crystalMaterials;
-    private static Material[] endCapMaterials;
-    private static Material bronzeAccentMaterial;
-    private static Material darkEngravingMaterial;
-    private static Material badgeGemMaterial;
+    private static Mesh coreMesh;
+    private static Material coreMaterial;
     private static bool built;
 
-    // Keep these dimensions aligned with the item's collider and ground placement.
-    // The silhouette stays inside the existing 0.278 radius / 0.778 half-length.
+    // Shared visual/collision dimensions. The capsule lies on its side in the world.
     public const float CapsuleRadius = 0.278f;
     public const float CapsuleHalfCylinder = 0.50f;
     public const float ModelScale = 0.41f;
@@ -39,367 +28,293 @@ public sealed class SoulshotVisual : MonoBehaviour
     public void Configure(string itemTemplate)
     {
         if (modelRoot != null) return;
-
         EnsureResources();
-        modelRoot = new GameObject("Soulshot_D_FacetedCrystal_Model");
+
+        modelRoot = new GameObject("Soulshot_D_3D_Model");
         modelRoot.transform.SetParent(transform, false);
         modelRoot.transform.localScale = Vector3.one * ModelScale;
 
-        AddMeshPart("BlueFacetedCrystal", crystalMesh, crystalMaterials,
-            Vector3.zero, Quaternion.identity, false);
+        AddPart("DGradeBlueMetalCapsule", coreMesh, coreMaterial, Vector3.zero, false);
 
-        const float capBase = 0.455f;
-        AddMeshPart("ForgedMetalCap_Right", endCapMesh, endCapMaterials,
-            new Vector3(0f, capBase, 0f), Quaternion.identity, false);
-        AddMeshPart("ForgedMetalCap_Left", endCapMesh, endCapMaterials,
-            new Vector3(0f, -capBase, 0f), Quaternion.Euler(0f, 0f, 180f), false);
-
-        // Raised rings catch small highlights like the warm metal collars in the reference.
-        for (int end = -1; end <= 1; end += 2)
-        {
-            AddMeshPart("BronzeCollarRim_" + end + "_A", accentRingMesh,
-                bronzeAccentMaterial, new Vector3(0f, end * 0.503f, 0f),
-                Quaternion.identity, false);
-            AddMeshPart("BronzeCollarRim_" + end + "_B", accentRingMesh,
-                bronzeAccentMaterial, new Vector3(0f, end * 0.557f, 0f),
-                Quaternion.identity, false);
-
-            // Small engraved diamond marks on both visible sides of each end cap.
-            AddEndCapBadge(end, 1);
-            AddEndCapBadge(end, -1);
-        }
+        // No self-lit point light: it washed the enamel into pale blue and made it read like glass.
+        // Gloss comes from the clear-coat-like material and painted studio reflections instead.
     }
 
-    private void AddEndCapBadge(int endSign, int sideSign)
-    {
-        Quaternion sideRotation = sideSign > 0
-            ? Quaternion.identity
-            : Quaternion.Euler(0f, 180f, 0f);
-
-        Vector3 center = new Vector3(0f, endSign * 0.550f, sideSign * 0.280f);
-        AddMeshPart("EndCapDiamondFrame_" + endSign + "_" + sideSign, badgeFrameMesh,
-            bronzeAccentMaterial, center, sideRotation, false);
-        AddMeshPart("EndCapDiamondInset_" + endSign + "_" + sideSign, badgeInsetMesh,
-            darkEngravingMaterial, center + new Vector3(0f, 0f, sideSign * 0.0018f),
-            sideRotation, false);
-        AddMeshPart("EndCapDiamondGem_" + endSign + "_" + sideSign, badgeGemMesh,
-            badgeGemMaterial, center + new Vector3(0f, 0f, sideSign * 0.0034f),
-            sideRotation, false);
-    }
-
-    private void AddMeshPart(string partName, Mesh mesh, Material[] materials,
-        Vector3 localPosition, Quaternion localRotation, bool castShadows)
+    private void AddPart(string partName, Mesh mesh, Material material, Vector3 localPosition, bool castShadows)
     {
         GameObject part = new GameObject(partName);
         part.transform.SetParent(modelRoot.transform, false);
         part.transform.localPosition = localPosition;
-        part.transform.localRotation = localRotation;
-
         MeshFilter filter = part.AddComponent<MeshFilter>();
         filter.sharedMesh = mesh;
         MeshRenderer renderer = part.AddComponent<MeshRenderer>();
-        renderer.sharedMaterials = materials;
+        renderer.sharedMaterial = material;
         renderer.shadowCastingMode = castShadows ? ShadowCastingMode.On : ShadowCastingMode.Off;
         renderer.receiveShadows = true;
         renderer.lightProbeUsage = LightProbeUsage.BlendProbes;
         renderer.reflectionProbeUsage = ReflectionProbeUsage.BlendProbes;
     }
 
-    private void AddMeshPart(string partName, Mesh mesh, Material material,
-        Vector3 localPosition, Quaternion localRotation, bool castShadows)
-    {
-        AddMeshPart(partName, mesh, new[] { material }, localPosition, localRotation, castShadows);
-    }
-
     private static void EnsureResources()
     {
         if (built) return;
 
-        // Eight separated radial faces make the blue core read as a faceted crystal,
-        // not a smooth pill or a blue tube wrapped in wire.
-        Vector2[] crystalProfile =
-        {
-            new Vector2(0.028f, -0.500f),
-            new Vector2(0.105f, -0.462f),
-            new Vector2(0.170f, -0.390f),
-            new Vector2(0.212f, -0.295f),
-            new Vector2(0.235f, -0.155f),
-            new Vector2(0.241f,  0.000f),
-            new Vector2(0.235f,  0.155f),
-            new Vector2(0.212f,  0.295f),
-            new Vector2(0.170f,  0.390f),
-            new Vector2(0.105f,  0.462f),
-            new Vector2(0.028f,  0.500f)
-        };
-        crystalMesh = BuildProfileMesh("Soulshot_D_BlueFacetedCrystal", crystalProfile, 8);
+        // One smooth capsule only: all braid and collar details are painted into its albedo texture.
+        const float capsuleRadius = CapsuleRadius;
+        const float halfCylinder = CapsuleHalfCylinder;
+        coreMesh = BuildCapsule(capsuleRadius, halfCylinder, 64, 24, 64);
 
-        // One matching cap mesh is mirrored onto each end. The wide collar stays below
-        // the existing capsule collider radius; each end narrows to a forged pointed tip.
-        Vector2[] capProfile =
-        {
-            new Vector2(0.155f, 0.000f),
-            new Vector2(0.220f, 0.024f),
-            new Vector2(0.273f, 0.050f),
-            new Vector2(0.276f, 0.080f),
-            new Vector2(0.264f, 0.112f),
-            new Vector2(0.238f, 0.154f),
-            new Vector2(0.203f, 0.198f),
-            new Vector2(0.160f, 0.241f),
-            new Vector2(0.112f, 0.282f),
-            new Vector2(0.062f, 0.313f),
-            new Vector2(0.018f, 0.323f)
-        };
-        endCapMesh = BuildProfileMesh("Soulshot_D_ForgedEndCap", capProfile, 8);
-        accentRingMesh = BuildTorus("Soulshot_D_RaisedBronzeCollar", 0.263f, 0.010f, 48, 8);
-        badgeFrameMesh = BuildDiamondFrame("Soulshot_D_EngravedDiamondFrame", 0.038f, 0.030f, 0.008f);
-        badgeInsetMesh = BuildSolidDiamond("Soulshot_D_EngravedDiamondInset", 0.024f, 0.021f);
-        badgeGemMesh = BuildSolidDiamond("Soulshot_D_EngravedDiamondBlueGem", 0.010f, 0.010f);
-
-        Color[] crystalShades =
-        {
-            new Color(0.006f, 0.028f, 0.115f),
-            new Color(0.012f, 0.085f, 0.340f),
-            new Color(0.018f, 0.235f, 0.720f),
-            new Color(0.045f, 0.390f, 0.920f),
-            new Color(0.022f, 0.155f, 0.530f),
-            new Color(0.004f, 0.045f, 0.205f),
-            new Color(0.105f, 0.475f, 0.985f),
-            new Color(0.010f, 0.105f, 0.430f)
-        };
-        crystalMaterials = new Material[crystalShades.Length];
-        for (int i = 0; i < crystalShades.Length; i++)
-        {
-            float emission = (i == 3 || i == 6) ? 0.055f : ((i == 2) ? 0.025f : 0.004f);
-            crystalMaterials[i] = MakeLitMaterial(
-                "Soulshot D Crystal Facet " + i, crystalShades[i],
-                0.10f, 0.70f, crystalShades[i] * emission);
-        }
-
-        Color[] metalShades =
-        {
-            new Color(0.075f, 0.065f, 0.052f),
-            new Color(0.180f, 0.135f, 0.090f),
-            new Color(0.335f, 0.252f, 0.165f),
-            new Color(0.465f, 0.362f, 0.235f),
-            new Color(0.235f, 0.190f, 0.135f),
-            new Color(0.100f, 0.085f, 0.068f),
-            new Color(0.295f, 0.222f, 0.145f),
-            new Color(0.060f, 0.053f, 0.045f)
-        };
-        endCapMaterials = new Material[metalShades.Length];
-        for (int i = 0; i < metalShades.Length; i++)
-        {
-            endCapMaterials[i] = MakeLitMaterial(
-                "Soulshot D Forged Bronze Facet " + i, metalShades[i],
-                0.52f, 0.68f, Color.black);
-        }
-
-        bronzeAccentMaterial = MakeLitMaterial(
-            "Soulshot D Warm Bronze Edges",
-            new Color(0.48f, 0.365f, 0.225f), 0.58f, 0.72f,
-            Color.black);
-        darkEngravingMaterial = MakeLitMaterial(
-            "Soulshot D Engraving Shadow",
-            new Color(0.028f, 0.025f, 0.021f), 0.55f, 0.64f, Color.black);
-        badgeGemMaterial = MakeLitMaterial(
-            "Soulshot D Tiny Blue Engraving Gem",
-            new Color(0.08f, 0.42f, 0.95f), 0.18f, 0.88f,
-            new Color(0.012f, 0.085f, 0.30f));
-
+        coreMaterial = MakeMaterial("Soulshot D Glossy Pepsi Blue Aluminum Enamel",
+            Color.white, BuildBlueMetalTexture(), 0.42f, 0.94f, false);
+        // Deliberately no emission: the blue should come from the enamel pigment, not from glow.
         built = true;
     }
 
-    private static Material MakeLitMaterial(string materialName, Color tint,
-        float metallic, float smoothness, Color emission)
+    private static Material MakeMaterial(string materialName, Color tint, Texture2D albedo,
+        float metallic, float smoothness, bool transparent)
     {
         Shader shader = Shader.Find("Universal Render Pipeline/Lit");
         if (shader == null) shader = Shader.Find("Standard");
         if (shader == null) shader = Shader.Find("Unlit/Color");
-
         Material material = new Material(shader) { name = materialName };
+
         if (material.HasProperty("_BaseColor")) material.SetColor("_BaseColor", tint);
         if (material.HasProperty("_Color")) material.SetColor("_Color", tint);
+        if (albedo != null)
+        {
+            if (material.HasProperty("_BaseMap")) material.SetTexture("_BaseMap", albedo);
+            if (material.HasProperty("_MainTex")) material.SetTexture("_MainTex", albedo);
+        }
         if (material.HasProperty("_Metallic")) material.SetFloat("_Metallic", metallic);
         if (material.HasProperty("_Smoothness")) material.SetFloat("_Smoothness", smoothness);
         if (material.HasProperty("_Glossiness")) material.SetFloat("_Glossiness", smoothness);
 
-        if (material.HasProperty("_EmissionColor") && emission.maxColorComponent > 0.0001f)
+        // The surface remains opaque; blue emission and lighting provide a subtle metallic glow.
+        material.DisableKeyword("_EMISSION");
+        if (transparent)
         {
-            material.SetColor("_EmissionColor", emission);
-            material.EnableKeyword("_EMISSION");
+            material.SetOverrideTag("RenderType", "Transparent");
+            if (material.HasProperty("_Surface")) material.SetFloat("_Surface", 1f);
+            if (material.HasProperty("_Blend")) material.SetFloat("_Blend", 0f);
+            if (material.HasProperty("_Mode")) material.SetFloat("_Mode", 3f);
+            if (material.HasProperty("_SrcBlend")) material.SetFloat("_SrcBlend", (float)BlendMode.SrcAlpha);
+            if (material.HasProperty("_DstBlend")) material.SetFloat("_DstBlend", (float)BlendMode.OneMinusSrcAlpha);
+            if (material.HasProperty("_ZWrite")) material.SetFloat("_ZWrite", 0f);
+            material.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
+            material.EnableKeyword("_ALPHABLEND_ON");
+            material.DisableKeyword("_ALPHATEST_ON");
+            material.renderQueue = (int)RenderQueue.Transparent;
         }
-        else
-        {
-            material.DisableKeyword("_EMISSION");
-        }
-
         return material;
     }
 
-    private static Mesh BuildProfileMesh(string meshName, Vector2[] profile, int radialSegments)
+    private static Texture2D BuildBlueMetalTexture()
     {
-        List<Vector3> vertices = new List<Vector3>(profile.Length * radialSegments * 2);
-        List<Vector2> uvs = new List<Vector2>(profile.Length * radialSegments * 2);
-        List<int>[] faceTriangles = new List<int>[radialSegments];
+        const int width = 512;
+        const int height = 512;
+        const float fullLength = 2f * (CapsuleHalfCylinder + CapsuleRadius);
+        const float collarCenter = 0.255f;
+        const float collarHalfWidth = 0.018f;
 
-        for (int face = 0; face < radialSegments; face++)
+        float lowerCollarV = 0.5f - collarCenter / fullLength;
+        float upperCollarV = 0.5f + collarCenter / fullLength;
+        float collarHalfWidthV = collarHalfWidth / fullLength;
+        const float braidStrands = 16f;
+
+        Texture2D texture = new Texture2D(width, height, TextureFormat.RGBA32, true)
         {
-            faceTriangles[face] = new List<int>((profile.Length - 1) * 6);
-            int faceStart = vertices.Count;
-            float angleA = face / (float)radialSegments * Mathf.PI * 2f;
-            float angleB = (face + 1) / (float)radialSegments * Mathf.PI * 2f;
+            name = "Soulshot_D_Glossy_Pepsi_Blue_Aluminum_Enamel",
+            wrapMode = TextureWrapMode.Repeat,
+            filterMode = FilterMode.Trilinear,
+            anisoLevel = 8
+        };
+        Color32[] pixels = new Color32[width * height];
 
-            for (int row = 0; row < profile.Length; row++)
-            {
-                float radius = profile[row].x;
-                float y = profile[row].y;
-                vertices.Add(new Vector3(Mathf.Cos(angleA) * radius, y, Mathf.Sin(angleA) * radius));
-                vertices.Add(new Vector3(Mathf.Cos(angleB) * radius, y, Mathf.Sin(angleB) * radius));
-                float v = row / (float)(profile.Length - 1);
-                uvs.Add(new Vector2(face / (float)radialSegments, v));
-                uvs.Add(new Vector2((face + 1) / (float)radialSegments, v));
-            }
+        // The reference is a glossy cobalt-blue aluminium can: saturated blue enamel,
+        // broad reflected light, and one narrow bright vertical glint. It is not glass
+        // and should not have pale/cyan translucency or a coarse hammered texture.
+        Color deepBlue = new Color(0.004f, 0.070f, 0.275f, 1f);
+        Color bodyBlue = new Color(0.006f, 0.275f, 0.645f, 1f);
+        Color reflectedBlue = new Color(0.012f, 0.415f, 0.815f, 1f);
+        Color highlightBlue = new Color(0.035f, 0.575f, 0.955f, 1f);
+        Color glintBlue = new Color(0.32f, 0.70f, 0.985f, 1f);
+        Color darkReflection = new Color(0.001f, 0.018f, 0.085f, 1f);
 
-            for (int row = 0; row < profile.Length - 1; row++)
+        for (int y = 0; y < height; y++)
+        {
+            float v = y / (float)(height - 1);
+            float axialMicrotexture = Mathf.Sin(v * Mathf.PI * 2f * 84f) * 0.002f;
+
+            for (int x = 0; x < width; x++)
             {
-                int lower = faceStart + row * 2;
-                int upper = lower + 2;
-                faceTriangles[face].Add(lower);
-                faceTriangles[face].Add(upper);
-                faceTriangles[face].Add(lower + 1);
-                faceTriangles[face].Add(lower + 1);
-                faceTriangles[face].Add(upper);
-                faceTriangles[face].Add(upper + 1);
+                float u = x / (float)(width - 1);
+
+                // Paint two soft studio reflections into the circumferential UV.
+                // The broad gradients stay blue; only the thin specular stripe goes
+                // silver-blue, like a clean lacquered can under a softbox.
+                float primaryDistance = Mathf.Abs(u - 0.245f);
+                primaryDistance = Mathf.Min(primaryDistance, 1f - primaryDistance);
+                float broadReflection = Mathf.Exp(-0.5f * Mathf.Pow(primaryDistance / 0.145f, 2f));
+                float narrowReflection = Mathf.Exp(-0.5f * Mathf.Pow(primaryDistance / 0.030f, 2f));
+
+                float secondaryDistance = Mathf.Abs(u - 0.755f);
+                secondaryDistance = Mathf.Min(secondaryDistance, 1f - secondaryDistance);
+                float secondaryReflection = Mathf.Exp(-0.5f * Mathf.Pow(secondaryDistance / 0.075f, 2f));
+
+                float darkDistance = Mathf.Abs(u - 0.505f);
+                darkDistance = Mathf.Min(darkDistance, 1f - darkDistance);
+                float darkStrip = Mathf.Exp(-0.5f * Mathf.Pow(darkDistance / 0.038f, 2f));
+
+                Color color = Color.Lerp(deepBlue, bodyBlue, 0.78f);
+                color = Color.Lerp(color, reflectedBlue, broadReflection * 0.82f);
+                color = Color.Lerp(color, highlightBlue, secondaryReflection * 0.52f);
+                color = Color.Lerp(color, darkReflection, darkStrip * 0.74f);
+                color = Color.Lerp(color, highlightBlue, narrowReflection * 0.52f);
+                color = Color.Lerp(color, glintBlue, Mathf.Clamp01(narrowReflection * 0.74f));
+
+                // A fine silver diamond braid wraps the enamel core between the two collars.
+                // Keep the wire thin and shaded so it reads as metal weave, not scratches.
+                if (v >= lowerCollarV && v <= upperCollarV)
+                {
+                    float axial = Mathf.InverseLerp(lowerCollarV, upperCollarV, v);
+                    float phaseA = Mathf.Repeat(u * braidStrands + axial * 5f, 1f);
+                    float phaseB = Mathf.Repeat(u * braidStrands - axial * 5f, 1f);
+                    float distA = Mathf.Min(phaseA, 1f - phaseA);
+                    float distB = Mathf.Min(phaseB, 1f - phaseB);
+                    float lineDistance = Mathf.Min(distA, distB);
+
+                    if (lineDistance < 0.075f)
+                    {
+                        float wireEdge = 1f - Mathf.InverseLerp(0.025f, 0.075f, lineDistance);
+                        Color wireShadow = new Color(0.075f, 0.13f, 0.23f, 1f);
+                        Color wireMetal = new Color(0.40f, 0.55f, 0.73f, 1f);
+                        Color wireHighlight = new Color(0.76f, 0.85f, 0.96f, 1f);
+                        color = Color.Lerp(color, wireShadow, wireEdge * 0.34f);
+                        color = Color.Lerp(color, wireMetal, wireEdge * 0.88f);
+
+                        if (lineDistance < 0.026f)
+                        {
+                            float core = 1f - Mathf.InverseLerp(0.008f, 0.026f, lineDistance);
+                            color = Color.Lerp(color, wireHighlight, core * 0.72f);
+                        }
+
+                        if (distA < 0.038f && distB < 0.038f)
+                        {
+                            color = Color.Lerp(color, new Color(0.88f, 0.93f, 1f, 1f), 0.24f);
+                        }
+                    }
+                }
+
+                // Almost imperceptible fine aluminium grain, not visible scratches or noise.
+                color.r += axialMicrotexture * 0.18f;
+                color.g += axialMicrotexture * 0.36f;
+                color.b += axialMicrotexture;
+                color.r = Mathf.Clamp01(color.r);
+                color.g = Mathf.Clamp01(color.g);
+                color.b = Mathf.Clamp01(color.b);
+
+                // Keep the capsule's two slim silver seams; make them smooth and brushed,
+                // rather than the thick white rings that would make the object look plastic.
+                float collarDistance = Mathf.Min(
+                    Mathf.Abs(v - lowerCollarV),
+                    Mathf.Abs(v - upperCollarV));
+                if (collarDistance < collarHalfWidthV)
+                {
+                    float collarShine = 1f - collarDistance / collarHalfWidthV;
+                    float silver = Mathf.Clamp01(0.60f + collarShine * 0.22f +
+                        0.035f * Mathf.Sin(u * Mathf.PI * 2f * 18f));
+                    Color steel = new Color(silver * 0.92f, silver * 0.96f, silver, 1f);
+                    color = Color.Lerp(color, steel, Mathf.Clamp01(0.82f + collarShine * 0.16f));
+                }
+
+                pixels[y * width + x] = new Color32(
+                    (byte)Mathf.Clamp(Mathf.RoundToInt(color.r * 255f), 0, 255),
+                    (byte)Mathf.Clamp(Mathf.RoundToInt(color.g * 255f), 0, 255),
+                    (byte)Mathf.Clamp(Mathf.RoundToInt(color.b * 255f), 0, 255),
+                    255);
             }
         }
 
-        Mesh mesh = new Mesh { name = meshName };
-        mesh.SetVertices(vertices);
-        mesh.SetUVs(0, uvs);
-        mesh.subMeshCount = radialSegments;
-        for (int face = 0; face < radialSegments; face++)
-        {
-            mesh.SetTriangles(faceTriangles[face], face, false);
-        }
-        mesh.RecalculateNormals();
-        mesh.RecalculateBounds();
-        return mesh;
+        texture.SetPixels32(pixels);
+        texture.Apply(true, false);
+        return texture;
     }
 
-    private static Mesh BuildTorus(string meshName, float majorRadius, float tubeRadius,
-        int radialSegments, int tubeSegments)
+    private static Mesh BuildCapsule(float radius, float halfCylinder,
+        int radial, int hemisphere, int bodySegments)
     {
-        List<Vector3> vertices = new List<Vector3>((radialSegments + 1) * (tubeSegments + 1));
-        List<Vector2> uvs = new List<Vector2>(vertices.Capacity);
-        List<int> triangles = new List<int>(radialSegments * tubeSegments * 6);
-
-        for (int i = 0; i <= radialSegments; i++)
+        List<Vector2> profile = new List<Vector2>();
+        for (int i = 1; i <= hemisphere; i++)
         {
-            float u = i / (float)radialSegments * Mathf.PI * 2f;
-            for (int j = 0; j <= tubeSegments; j++)
-            {
-                float v = j / (float)tubeSegments * Mathf.PI * 2f;
-                float radius = majorRadius + tubeRadius * Mathf.Cos(v);
-                vertices.Add(new Vector3(radius * Mathf.Cos(u), tubeRadius * Mathf.Sin(v),
-                    radius * Mathf.Sin(u)));
-                uvs.Add(new Vector2(i / (float)radialSegments, j / (float)tubeSegments));
-            }
+            float a = -Mathf.PI * 0.5f + Mathf.PI * 0.5f * i / hemisphere;
+            profile.Add(new Vector2(radius * Mathf.Cos(a), -halfCylinder + radius * Mathf.Sin(a)));
+        }
+        for (int i = 1; i <= bodySegments; i++)
+        {
+            float y = Mathf.Lerp(-halfCylinder, halfCylinder, i / (float)bodySegments);
+            profile.Add(new Vector2(radius, y));
+        }
+        for (int i = 1; i < hemisphere; i++)
+        {
+            float a = Mathf.PI * 0.5f * i / hemisphere;
+            profile.Add(new Vector2(radius * Mathf.Cos(a), halfCylinder + radius * Mathf.Sin(a)));
         }
 
-        for (int i = 0; i < radialSegments; i++)
+        List<Vector3> vertices = new List<Vector3>();
+        List<Vector2> uv = new List<Vector2>();
+        List<int> triangles = new List<int>();
+        for (int row = 0; row < profile.Count; row++)
         {
-            for (int j = 0; j < tubeSegments; j++)
+            float r = Mathf.Max(0.0001f, profile[row].x);
+            float y = profile[row].y;
+            float v = Mathf.InverseLerp(-halfCylinder - radius, halfCylinder + radius, y);
+            for (int segment = 0; segment < radial; segment++)
             {
-                int a = i * (tubeSegments + 1) + j;
-                int b = a + tubeSegments + 1;
-                // Reverse the winding so the torus normals face outward.
-                triangles.Add(a);
-                triangles.Add(a + 1);
-                triangles.Add(b);
-                triangles.Add(a + 1);
-                triangles.Add(b + 1);
-                triangles.Add(b);
+                float a = segment / (float)radial * Mathf.PI * 2f;
+                vertices.Add(new Vector3(Mathf.Cos(a) * r, y, Mathf.Sin(a) * r));
+                uv.Add(new Vector2(segment / (float)radial, v));
             }
         }
+        for (int row = 0; row < profile.Count - 1; row++)
+        {
+            int current = row * radial;
+            int nextRow = (row + 1) * radial;
+            for (int segment = 0; segment < radial; segment++)
+            {
+                int next = (segment + 1) % radial;
+                triangles.Add(current + segment);
+                triangles.Add(nextRow + segment);
+                triangles.Add(current + next);
+                triangles.Add(current + next);
+                triangles.Add(nextRow + segment);
+                triangles.Add(nextRow + next);
+            }
+        }
+        int bottomPole = vertices.Count;
+        vertices.Add(new Vector3(0f, -halfCylinder - radius, 0f));
+        uv.Add(new Vector2(0.5f, 0f));
+        int topPole = vertices.Count;
+        vertices.Add(new Vector3(0f, halfCylinder + radius, 0f));
+        uv.Add(new Vector2(0.5f, 1f));
+        int lastRow = (profile.Count - 1) * radial;
+        for (int segment = 0; segment < radial; segment++)
+        {
+            int next = (segment + 1) % radial;
+            triangles.Add(bottomPole);
+            triangles.Add(segment);
+            triangles.Add(next);
+            triangles.Add(topPole);
+            triangles.Add(lastRow + next);
+            triangles.Add(lastRow + segment);
+        }
 
-        Mesh mesh = new Mesh { name = meshName };
+        Mesh mesh = new Mesh { name = "Soulshot_Capsule_Mesh" };
         mesh.SetVertices(vertices);
-        mesh.SetUVs(0, uvs);
+        mesh.SetUVs(0, uv);
         mesh.SetTriangles(triangles, 0);
         mesh.RecalculateNormals();
         mesh.RecalculateBounds();
         return mesh;
     }
 
-    private static Mesh BuildDiamondFrame(string meshName, float halfWidth,
-        float halfHeight, float borderWidth)
-    {
-        Vector2[] outer =
-        {
-            new Vector2(0f, halfHeight),
-            new Vector2(-halfWidth, 0f),
-            new Vector2(0f, -halfHeight),
-            new Vector2(halfWidth, 0f)
-        };
-        float innerWidth = Mathf.Max(0.001f, halfWidth - borderWidth);
-        float innerHeight = Mathf.Max(0.001f, halfHeight - borderWidth);
-        Vector2[] inner =
-        {
-            new Vector2(0f, innerHeight),
-            new Vector2(-innerWidth, 0f),
-            new Vector2(0f, -innerHeight),
-            new Vector2(innerWidth, 0f)
-        };
-
-        List<Vector3> vertices = new List<Vector3>(16);
-        List<int> triangles = new List<int>(24);
-        for (int i = 0; i < 4; i++)
-        {
-            int next = (i + 1) % 4;
-            int start = vertices.Count;
-            vertices.Add(new Vector3(outer[i].x, outer[i].y, 0f));
-            vertices.Add(new Vector3(outer[next].x, outer[next].y, 0f));
-            vertices.Add(new Vector3(inner[next].x, inner[next].y, 0f));
-            vertices.Add(new Vector3(inner[i].x, inner[i].y, 0f));
-            triangles.Add(start);
-            triangles.Add(start + 1);
-            triangles.Add(start + 2);
-            triangles.Add(start);
-            triangles.Add(start + 2);
-            triangles.Add(start + 3);
-        }
-
-        Mesh mesh = new Mesh { name = meshName };
-        mesh.SetVertices(vertices);
-        mesh.SetTriangles(triangles, 0);
-        mesh.RecalculateNormals();
-        mesh.RecalculateBounds();
-        return mesh;
-    }
-
-    private static Mesh BuildSolidDiamond(string meshName, float halfWidth, float halfHeight)
-    {
-        Vector3[] vertices =
-        {
-            Vector3.zero,
-            new Vector3(0f, halfHeight, 0f),
-            new Vector3(-halfWidth, 0f, 0f),
-            new Vector3(0f, -halfHeight, 0f),
-            new Vector3(halfWidth, 0f, 0f)
-        };
-        int[] triangles =
-        {
-            0, 1, 2,
-            0, 2, 3,
-            0, 3, 4,
-            0, 4, 1
-        };
-
-        Mesh mesh = new Mesh { name = meshName };
-        mesh.vertices = vertices;
-        mesh.triangles = triangles;
-        mesh.RecalculateNormals();
-        mesh.RecalculateBounds();
-        return mesh;
-    }
 }
