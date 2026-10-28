@@ -222,6 +222,12 @@ public sealed class SoulshotVisual : MonoBehaviour
         return texture;
     }
 
+    private static float Noise(int x, int y)
+    {
+        float value = Mathf.Sin(x * 12.9898f + y * 78.233f) * 43758.5453f;
+        return value - Mathf.Floor(value);
+    }
+
     private static Mesh BuildCapsule(float radius, float halfCylinder,
         int radial, int hemisphere, int bodySegments)
     {
