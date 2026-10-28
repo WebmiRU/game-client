@@ -36,16 +36,8 @@ public sealed class SoulshotVisual : MonoBehaviour
 
         AddPart("DGradeBlueMetalCapsule", coreMesh, coreMaterial, Vector3.zero, false);
 
-        GameObject glowObject = new GameObject("SubtleBlueLight");
-        glowObject.transform.SetParent(modelRoot.transform, false);
-        Light blueLight = glowObject.AddComponent<Light>();
-        blueLight.type = LightType.Point;
-        blueLight.color = new Color(0.08f, 0.28f, 1f, 1f);
-        // Keep just a subtle blue tint on nearby surfaces; the capsule should read as matte,
-        // not as a glowing or highly polished object.
-        blueLight.intensity = 0.22f;
-        blueLight.range = 0.425f;
-        blueLight.shadows = LightShadows.None;
+        // No self-lit point light: it washed the enamel into pale blue and made it read like glass.
+        // Gloss comes from the clear-coat-like material and painted studio reflections instead.
     }
 
     private void AddPart(string partName, Mesh mesh, Material material, Vector3 localPosition, bool castShadows)
@@ -59,6 +51,7 @@ public sealed class SoulshotVisual : MonoBehaviour
         renderer.sharedMaterial = material;
         renderer.shadowCastingMode = castShadows ? ShadowCastingMode.On : ShadowCastingMode.Off;
         renderer.receiveShadows = true;
+        renderer.lightProbeUsage = LightProbeUsage.BlendProbes;
         renderer.reflectionProbeUsage = ReflectionProbeUsage.BlendProbes;
     }
 
@@ -71,14 +64,9 @@ public sealed class SoulshotVisual : MonoBehaviour
         const float halfCylinder = CapsuleHalfCylinder;
         coreMesh = BuildCapsule(capsuleRadius, halfCylinder, 64, 24, 64);
 
-        coreMaterial = MakeMaterial("Soulshot D Matte Deep Navy Blue Capsule",
-            Color.white, BuildBlueMetalTexture(), 0.10f, 0.40f, false);
-        if (coreMaterial.HasProperty("_EmissionColor"))
-        {
-            // Subtle blue emission, with the main appearance still coming from the metallic texture.
-            coreMaterial.SetColor("_EmissionColor", new Color(0.001f, 0.003f, 0.012f, 1f));
-            coreMaterial.EnableKeyword("_EMISSION");
-        }
+        coreMaterial = MakeMaterial("Soulshot D Glossy Pepsi Blue Aluminum Enamel",
+            Color.white, BuildBlueMetalTexture(), 0.42f, 0.94f, false);
+        // Deliberately no emission: the blue should come from the enamel pigment, not from glow.
         built = true;
     }
 
@@ -124,99 +112,85 @@ public sealed class SoulshotVisual : MonoBehaviour
     {
         const int width = 512;
         const int height = 512;
-        const int strands = 16;
-        const float braidHalfLength = 0.248f;
-        const float capsuleRadius = CapsuleRadius;
-        const float halfCylinder = CapsuleHalfCylinder;
-        const float fullLength = 2f * (halfCylinder + capsuleRadius);
-        float turns = braidHalfLength / (Mathf.PI * capsuleRadius);
+        const float fullLength = 2f * (CapsuleHalfCylinder + CapsuleRadius);
         const float collarCenter = 0.255f;
         const float collarHalfWidth = 0.018f;
 
-        // The UV covers the complete capsule length. Restrict the weave to the centre strip;
-        // narrow silver bands at its edges are texture details, not separate objects.
-        float uvStart = (halfCylinder + capsuleRadius - braidHalfLength) / fullLength;
-        float uvEnd = 1f - uvStart;
+        float lowerCollarV = 0.5f - collarCenter / fullLength;
+        float upperCollarV = 0.5f + collarCenter / fullLength;
+        float collarHalfWidthV = collarHalfWidth / fullLength;
 
         Texture2D texture = new Texture2D(width, height, TextureFormat.RGBA32, true)
         {
-            name = "Soulshot_D_Pepsi_Blue_Metal_With_Silver_Diamond_Weave",
+            name = "Soulshot_D_Glossy_Pepsi_Blue_Aluminum_Enamel",
             wrapMode = TextureWrapMode.Repeat,
             filterMode = FilterMode.Trilinear,
             anisoLevel = 8
         };
         Color32[] pixels = new Color32[width * height];
 
+        // The reference is a glossy cobalt-blue aluminium can: saturated blue enamel,
+        // broad reflected light, and one narrow bright vertical glint. It is not glass
+        // and should not have pale/cyan translucency or a coarse hammered texture.
+        Color deepBlue = new Color(0.004f, 0.055f, 0.245f, 1f);
+        Color bodyBlue = new Color(0.006f, 0.115f, 0.405f, 1f);
+        Color reflectedBlue = new Color(0.012f, 0.245f, 0.655f, 1f);
+        Color highlightBlue = new Color(0.045f, 0.385f, 0.835f, 1f);
+        Color glintBlue = new Color(0.36f, 0.62f, 0.94f, 1f);
+        Color darkReflection = new Color(0.001f, 0.018f, 0.085f, 1f);
+
         for (int y = 0; y < height; y++)
         {
             float v = y / (float)(height - 1);
-            bool inWeaveBand = v >= uvStart && v <= uvEnd;
-            float t = inWeaveBand ? Mathf.InverseLerp(uvStart, uvEnd, v) : 0f;
+            float axialMicrotexture = Mathf.Sin(v * Mathf.PI * 2f * 84f) * 0.002f;
 
             for (int x = 0; x < width; x++)
             {
                 float u = x / (float)(width - 1);
 
-                // Dark royal-blue enamel, similar to a Pepsi can; highlights are controlled
-                // and narrow, so the surface reads as painted metal rather than liquid.
-                float broadHighlight = Mathf.Pow(
-                    Mathf.Max(0f, Mathf.Cos((u - 0.22f) * Mathf.PI * 2f)), 10f) * 0.10f;
-                float secondaryHighlight = Mathf.Pow(
-                    Mathf.Max(0f, Mathf.Cos((u + 0.24f) * Mathf.PI * 2f)), 18f) * 0.035f;
-                float fineBrushing = Mathf.Sin(u * Mathf.PI * 2f * 42f + v * 0.4f) * 0.004f;
-                float noise = (Noise(x, y) - 0.5f) * 0.010f;
-                float shine = Mathf.Clamp01(0.06f + broadHighlight + secondaryHighlight + fineBrushing + noise);
+                // Paint two soft studio reflections into the circumferential UV.
+                // The broad gradients stay blue; only the thin specular stripe goes
+                // silver-blue, like a clean lacquered can under a softbox.
+                float primaryDistance = Mathf.Abs(u - 0.245f);
+                primaryDistance = Mathf.Min(primaryDistance, 1f - primaryDistance);
+                float broadReflection = Mathf.Exp(-0.5f * Mathf.Pow(primaryDistance / 0.145f, 2f));
+                float narrowReflection = Mathf.Exp(-0.5f * Mathf.Pow(primaryDistance / 0.030f, 2f));
 
-                // Deep, highly saturated navy/royal blue. Even the highlights stay blue,
-                // never drifting into cyan or pale sky-blue.
-                Color color = new Color(
-                    (3f + 4f * shine) / 255f,
-                    (7f + 12f * shine) / 255f,
-                    (42f + 86f * shine) / 255f,
-                    1f);
+                float secondaryDistance = Mathf.Abs(u - 0.755f);
+                secondaryDistance = Mathf.Min(secondaryDistance, 1f - secondaryDistance);
+                float secondaryReflection = Mathf.Exp(-0.5f * Mathf.Pow(secondaryDistance / 0.075f, 2f));
 
-                if (inWeaveBand)
+                float darkDistance = Mathf.Abs(u - 0.505f);
+                darkDistance = Mathf.Min(darkDistance, 1f - darkDistance);
+                float darkStrip = Mathf.Exp(-0.5f * Mathf.Pow(darkDistance / 0.038f, 2f));
+
+                Color color = Color.Lerp(deepBlue, bodyBlue, 0.78f);
+                color = Color.Lerp(color, reflectedBlue, broadReflection * 0.82f);
+                color = Color.Lerp(color, highlightBlue, secondaryReflection * 0.52f);
+                color = Color.Lerp(color, darkReflection, darkStrip * 0.74f);
+                color = Color.Lerp(color, highlightBlue, narrowReflection * 0.52f);
+                color = Color.Lerp(color, glintBlue, Mathf.Clamp01(narrowReflection * 0.74f));
+
+                // Almost imperceptible fine aluminium grain, not visible scratches or noise.
+                color.r += axialMicrotexture * 0.18f;
+                color.g += axialMicrotexture * 0.36f;
+                color.b += axialMicrotexture;
+                color.r = Mathf.Clamp01(color.r);
+                color.g = Mathf.Clamp01(color.g);
+                color.b = Mathf.Clamp01(color.b);
+
+                // Keep the capsule's two slim silver seams; make them smooth and brushed,
+                // rather than the thick white rings that would make the object look plastic.
+                float collarDistance = Mathf.Min(
+                    Mathf.Abs(v - lowerCollarV),
+                    Mathf.Abs(v - upperCollarV));
+                if (collarDistance < collarHalfWidthV)
                 {
-                    // Two opposing diagonal strand families. Matching their pitch on the
-                    // unwrapped cylinder keeps the diamond cells close to square.
-                    float phaseA = Mathf.Repeat((u - turns * t) * strands, 1f);
-                    float phaseB = Mathf.Repeat((u + turns * t) * strands, 1f);
-                    float distA = Mathf.Min(phaseA, 1f - phaseA);
-                    float distB = Mathf.Min(phaseB, 1f - phaseB);
-                    float lineDistance = Mathf.Min(distA, distB);
-
-                    // A narrow shaded edge and pale centre imitate round polished wires.
-                    if (lineDistance < 0.115f)
-                    {
-                        float edge = Mathf.InverseLerp(0.115f, 0.028f, lineDistance);
-                        Color wireEdge = new Color(0.19f, 0.29f, 0.43f, 1f);
-                        Color wireMetal = new Color(0.48f, 0.62f, 0.78f, 1f);
-                        Color wireHighlight = new Color(0.82f, 0.91f, 1f, 1f);
-                        color = Color.Lerp(color, Color.Lerp(wireEdge, wireMetal, edge), 0.96f);
-
-                        if (lineDistance < 0.045f)
-                        {
-                            color = Color.Lerp(color, wireHighlight,
-                                Mathf.InverseLerp(0.045f, 0.0f, lineDistance) * 0.9f);
-                        }
-
-                        // Slightly brighter intersections make the crossing pattern legible at game distance.
-                        if (distA < 0.075f && distB < 0.075f)
-                            color = Color.Lerp(color, new Color(0.88f, 0.94f, 1f, 1f), 0.5f);
-                    }
-                }
-
-                // The two original silver collars are also painted, so the capsule stays a single mesh.
-                float lowerCollarV = 0.5f - collarCenter / fullLength;
-                float upperCollarV = 0.5f + collarCenter / fullLength;
-                float collarDistance = Mathf.Min(Mathf.Abs(v - lowerCollarV), Mathf.Abs(v - upperCollarV));
-                if (collarDistance < collarHalfWidth / fullLength)
-                {
-                    float collarShine = 1f - collarDistance / (collarHalfWidth / fullLength);
-                    float brushed = 0.84f + 0.12f * shine + 0.04f * Mathf.Sin(u * Mathf.PI * 2f * 12f);
-                    Color steel = new Color(brushed, brushed * 0.985f, brushed * 0.94f, 1f);
-                    color = Color.Lerp(new Color(0.20f, 0.24f, 0.30f, 1f), steel,
-                        Mathf.Clamp01(0.72f + collarShine * 0.28f));
+                    float collarShine = 1f - collarDistance / collarHalfWidthV;
+                    float silver = Mathf.Clamp01(0.60f + collarShine * 0.22f +
+                        0.035f * Mathf.Sin(u * Mathf.PI * 2f * 18f));
+                    Color steel = new Color(silver * 0.92f, silver * 0.96f, silver, 1f);
+                    color = Color.Lerp(color, steel, Mathf.Clamp01(0.82f + collarShine * 0.16f));
                 }
 
                 pixels[y * width + x] = new Color32(
@@ -230,12 +204,6 @@ public sealed class SoulshotVisual : MonoBehaviour
         texture.SetPixels32(pixels);
         texture.Apply(true, false);
         return texture;
-    }
-
-    private static float Noise(int x, int y)
-    {
-        float value = Mathf.Sin(x * 12.9898f + y * 78.233f) * 43758.5453f;
-        return value - Mathf.Floor(value);
     }
 
     private static Mesh BuildCapsule(float radius, float halfCylinder,
