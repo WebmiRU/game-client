@@ -69,7 +69,7 @@ public sealed class InventoryWindowUI : MonoBehaviour
     {
         _instance = this;
         uiFont = Resources.GetBuiltinResource<Font>("Arial.ttf");
-        _inventoryFrameTexture = CreateInventoryFrameTexture();
+        _inventoryFrameTexture = Resources.Load<Texture2D>("inventory_current") ?? CreateInventoryFrameTexture();
         EnsureEventSystem();
         BuildCanvasAndWindow();
         window.SetActive(false);
