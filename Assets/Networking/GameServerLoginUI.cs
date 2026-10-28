@@ -1692,62 +1692,83 @@ public sealed class GameServerLoginUI : MonoBehaviour
         return label;
     }
 
+    private static bool IsSoulshotItem(WorldGroundItemData item)
+    {
+        if (item == null) return false;
+        string template = item.itemTemplate ?? string.Empty;
+        string itemName = item.name ?? string.Empty;
+        return template.IndexOf("soulshot", StringComparison.OrdinalIgnoreCase) >= 0 ||
+               itemName.IndexOf("soulshot", StringComparison.OrdinalIgnoreCase) >= 0 ||
+               itemName.IndexOf("соулшот", StringComparison.OrdinalIgnoreCase) >= 0 ||
+               itemName.IndexOf("соушот", StringComparison.OrdinalIgnoreCase) >= 0;
+    }
+
     private void ApplyGroundItemViews(WorldGroundItemData[] items)
     {
         HashSet<string> visibleItemIDs = new HashSet<string>();
         foreach (WorldGroundItemData item in items)
         {
-            if (item == null || string.IsNullOrWhiteSpace(item.id) || item.position == null)
-            {
-                continue;
-            }
-
+            if (item == null || string.IsNullOrWhiteSpace(item.id) || item.position == null) continue;
             visibleItemIDs.Add(item.id);
+            bool isSoulshot = IsSoulshotItem(item);
+
             if (!_groundItemViews.TryGetValue(item.id, out GameObject view) || view == null)
             {
-                view = GameObject.CreatePrimitive(PrimitiveType.Cube);
-                view.name = "GroundItem_" + item.id;
-                Renderer renderer = view.GetComponent<Renderer>();
-                if (renderer != null)
+                if (isSoulshot)
                 {
-                    renderer.sharedMaterial = GetOrCreateSolidMaterial(
-                        ref _groundItemMaterial,
-                        "GroundItemMaterial",
-                        new Color(0.86f, 0.68f, 0.18f));
+                    view = new GameObject("GroundItem_" + item.id);
+                    SphereCollider itemCollider = view.AddComponent<SphereCollider>();
+                    itemCollider.radius = 0.27f;
+                    view.AddComponent<SoulshotVisual>().Configure(item.itemTemplate);
                 }
+                else
+                {
+                    view = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                    Renderer renderer = view.GetComponent<Renderer>();
+                    if (renderer != null)
+                    {
+                        renderer.sharedMaterial = GetOrCreateSolidMaterial(
+                            ref _groundItemMaterial, "GroundItemMaterial", new Color(0.86f, 0.68f, 0.18f));
+                    }
+                }
+                view.name = "GroundItem_" + item.id;
                 _groundItemViews[item.id] = view;
             }
 
             const float itemSize = 0.35f;
-            view.transform.localScale = Vector3.one * itemSize;
             float baseY = item.position.y;
-            if (TryGetTerrainSurfaceY(item.position.x, item.position.z, out float terrainY))
+            if (TryGetTerrainSurfaceY(item.position.x, item.position.z, out float terrainY)) baseY = terrainY;
+
+            if (isSoulshot)
             {
-                baseY = terrainY;
+                view.transform.localScale = Vector3.one;
+                view.transform.position = new Vector3(item.position.x, baseY + 0.25f, item.position.z);
+                view.transform.rotation = Quaternion.Euler(12f, 0f, 68f);
             }
-            view.transform.position = new Vector3(
-                item.position.x, baseY + itemSize * 0.5f, item.position.z);
-            view.transform.rotation = Quaternion.Euler(0f, 45f, 0f);
+            else
+            {
+                view.transform.localScale = Vector3.one * itemSize;
+                view.transform.position = new Vector3(item.position.x, baseY + itemSize * 0.5f, item.position.z);
+                view.transform.rotation = Quaternion.Euler(0f, 45f, 0f);
+            }
 
             string itemName = string.IsNullOrWhiteSpace(item.name)
                 ? (string.IsNullOrWhiteSpace(item.itemTemplate) ? "Предмет" : item.itemTemplate)
                 : item.name;
-            string displayName = item.quantity > 1
-                ? itemName + " x" + item.quantity
-                : itemName;
+            string displayName = item.quantity > 1 ? itemName + " x" + item.quantity : itemName;
             Transform labelTransform = view.transform.Find("NameLabel");
-            TextMesh itemLabel = labelTransform != null
-                ? labelTransform.GetComponent<TextMesh>()
-                : null;
+            TextMesh itemLabel = labelTransform != null ? labelTransform.GetComponent<TextMesh>() : null;
             if (itemLabel == null)
             {
-                itemLabel = CreateWorldNameLabel(view, displayName, itemSize * 0.5f + 0.45f);
+                itemLabel = CreateWorldNameLabel(view, displayName, isSoulshot ? 0.52f : itemSize * 0.5f + 0.45f);
             }
-            WorldTargetable targetable = view.GetComponent<WorldTargetable>();
-            if (targetable == null)
+            else
             {
-                targetable = view.AddComponent<WorldTargetable>();
+                itemLabel.text = displayName;
             }
+
+            WorldTargetable targetable = view.GetComponent<WorldTargetable>();
+            if (targetable == null) targetable = view.AddComponent<WorldTargetable>();
             targetable.Configure("item", item.id, displayName, itemLabel);
         }
 
@@ -1756,17 +1777,11 @@ public sealed class GameServerLoginUI : MonoBehaviour
         {
             if (!visibleItemIDs.Contains(pair.Key))
             {
-                if (pair.Value != null)
-                {
-                    Destroy(pair.Value);
-                }
+                if (pair.Value != null) Destroy(pair.Value);
                 staleIDs.Add(pair.Key);
             }
         }
-        foreach (string staleID in staleIDs)
-        {
-            _groundItemViews.Remove(staleID);
-        }
+        foreach (string staleID in staleIDs) _groundItemViews.Remove(staleID);
     }
 
     private bool TryGetTerrainSurfaceY(float worldX, float worldZ, out float surfaceY)

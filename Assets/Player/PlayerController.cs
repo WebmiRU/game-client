@@ -941,7 +941,7 @@ public class PlayerController : MonoBehaviour
         UpdateHoveredWorldTarget();
 
         // Clicking an entity selects it; clicking the selected monster again starts melee combat.
-        if (Mouse.current != null && Mouse.current.leftButton.wasPressedThisFrame)
+        if (!InventoryWindowUI.IsOpen && Mouse.current != null && Mouse.current.leftButton.wasPressedThisFrame)
         {
             TrySetMoveTargetFromMouse();
         }
