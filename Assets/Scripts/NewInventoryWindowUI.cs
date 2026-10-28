@@ -423,6 +423,8 @@ public sealed class NewInventoryWindowUI : MonoBehaviour
         float cellHeight = gridRect.height / rows;
         int visibleCount = Mathf.Min(_inventoryItems.Count, columns * rows);
         Event currentEvent = Event.current;
+        Color previousColor = GUI.color;
+        GUI.color = Color.white;
 
         for (int index = 0; index < visibleCount; index++)
         {
@@ -446,10 +448,7 @@ public sealed class NewInventoryWindowUI : MonoBehaviour
             Texture2D icon = isSoulshot ? _soulshotIconTexture : _genericItemIconTexture;
             if (icon != null)
             {
-                Color oldColor = GUI.color;
-                GUI.color = Color.white;
                 GUI.DrawTexture(iconRect, icon, ScaleMode.ScaleToFit, true);
-                GUI.color = oldColor;
             }
 
             if (item.quantity > 1)
@@ -485,6 +484,8 @@ public sealed class NewInventoryWindowUI : MonoBehaviour
                     item.name, _inventoryTooltipStyle);
             }
         }
+
+        GUI.color = previousColor;
     }
 
     private void EnsureInventoryItemStyles()
