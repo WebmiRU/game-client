@@ -146,77 +146,63 @@ public sealed class NewInventoryWindowUI : MonoBehaviour
 
     private void DrawInventoryGrid(Rect frameRect)
     {
-        // These coordinates are relative to the 640x360 frame texture.
-        // Keep the grid clear of the top/bottom ornament and use the right 2/3
-        // of the inner opening as its layout area.
+        // The grid occupies the right two-thirds of the frame's inner opening.
+        // Cells are flat and separated only by thin lines; the whole grid has
+        // one shared outer border rather than individual beveled cell borders.
         const float innerLeft = 31f;
         const float innerWidth = 578f;
         const float gridTop = 66f;
         const float gridHeight = 232f;
-        const int columns = 7;
-        const int rows = 8;
-        const float gap = 4f;
+        const int columns = 10;
+        const int rows = 7;
 
         float scaleX = frameRect.width / 640f;
         float scaleY = frameRect.height / 360f;
         float areaX = innerLeft + innerWidth / 3f;
         float areaWidth = innerWidth * 2f / 3f;
 
-        float scaledGapX = gap * scaleX;
-        float scaledGapY = gap * scaleY;
-        float scaledAreaWidth = areaWidth * scaleX;
-        float scaledAreaHeight = gridHeight * scaleY;
-        float cellSize = Mathf.Min(
-            (scaledAreaWidth - scaledGapX * (columns - 1)) / columns,
-            (scaledAreaHeight - scaledGapY * (rows - 1)) / rows);
+        Rect gridRect = new Rect(
+            frameRect.x + areaX * scaleX,
+            frameRect.y + gridTop * scaleY,
+            areaWidth * scaleX,
+            gridHeight * scaleY);
 
-        if (cellSize <= 0f || _blueBackgroundTexture == null) return;
-
-        float gridWidth = columns * cellSize + (columns - 1) * scaledGapX;
-        float gridPixelHeight = rows * cellSize + (rows - 1) * scaledGapY;
-        float gridX = frameRect.x + areaX * scaleX + (scaledAreaWidth - gridWidth) * 0.5f;
-        float gridY = frameRect.y + gridTop * scaleY + (scaledAreaHeight - gridPixelHeight) * 0.5f;
+        if (_blueBackgroundTexture == null || gridRect.width <= 0f || gridRect.height <= 0f)
+            return;
 
         Color previousColor = GUI.color;
+        float scale = Mathf.Min(scaleX, scaleY);
+        float outerBorder = 2f * scale;
+        float lineWidth = 1f * scale;
 
-        for (int row = 0; row < rows; row++)
+        // One shared outer frame and a flat, slightly darker interior.
+        DrawSolidRect(gridRect, new Color(0.25f, 0.17f, 0.095f, 0.96f));
+        Rect innerRect = new Rect(
+            gridRect.x + outerBorder,
+            gridRect.y + outerBorder,
+            gridRect.width - 2f * outerBorder,
+            gridRect.height - 2f * outerBorder);
+        DrawSolidRect(innerRect, new Color(0.018f, 0.045f, 0.105f, 0.60f));
+
+        // Simple uniform dividers; no shadows, raised edges or highlighted corners.
+        Color dividerColor = new Color(0.27f, 0.20f, 0.13f, 0.92f);
+        float cellWidth = innerRect.width / columns;
+        float cellHeight = innerRect.height / rows;
+
+        for (int column = 1; column < columns; column++)
         {
-            for (int column = 0; column < columns; column++)
-            {
-                Rect cell = new Rect(
-                    gridX + column * (cellSize + scaledGapX),
-                    gridY + row * (cellSize + scaledGapY),
-                    cellSize,
-                    cellSize);
+            float x = innerRect.x + cellWidth * column;
+            DrawSolidRect(
+                new Rect(x - lineWidth * 0.5f, innerRect.y, lineWidth, innerRect.height),
+                dividerColor);
+        }
 
-                // Soft shadow beneath each slot.
-                DrawSolidRect(
-                    new Rect(cell.x + 1f * scaleX, cell.y + 1.5f * scaleY, cell.width, cell.height),
-                    new Color(0.005f, 0.008f, 0.02f, 0.72f));
-
-                // Bronze outer edge and dark inset.
-                DrawSolidRect(cell, new Color(0.30f, 0.21f, 0.12f, 0.96f));
-                Rect inset = new Rect(
-                    cell.x + 1.2f * scaleX,
-                    cell.y + 1.2f * scaleY,
-                    cell.width - 2.4f * scaleX,
-                    cell.height - 2.4f * scaleY);
-                DrawSolidRect(inset, new Color(0.025f, 0.055f, 0.12f, 0.94f));
-
-                // A restrained bevel makes the cells read as individual slots.
-                DrawSolidRect(
-                    new Rect(inset.x, inset.y, inset.width, 1f * scaleY),
-                    new Color(0.58f, 0.43f, 0.25f, 0.74f));
-                DrawSolidRect(
-                    new Rect(inset.x, inset.y, 1f * scaleX, inset.height),
-                    new Color(0.42f, 0.34f, 0.25f, 0.58f));
-                DrawSolidRect(
-                    new Rect(inset.x, inset.yMax - 1f * scaleY, inset.width, 1f * scaleY),
-                    new Color(0.003f, 0.008f, 0.022f, 0.82f));
-                DrawSolidRect(
-                    new Rect(inset.xMax - 1f * scaleX, inset.y, 1f * scaleX, inset.height),
-                    new Color(0.003f, 0.008f, 0.022f, 0.82f));
-            }
+        for (int row = 1; row < rows; row++)
+        {
+            float y = innerRect.y + cellHeight * row;
+            DrawSolidRect(
+                new Rect(innerRect.x, y - lineWidth * 0.5f, innerRect.width, lineWidth),
+                dividerColor);
         }
 
         GUI.color = previousColor;
