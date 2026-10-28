@@ -13,6 +13,10 @@ public sealed class NewInventoryWindowUI : MonoBehaviour
     private static NewInventoryWindowUI _instance;
     private Texture2D _frameTexture;
     private Texture2D _blueBackgroundTexture;
+    private Vector2 _windowPosition;
+    private Vector2 _dragOffset;
+    private bool _hasWindowPosition;
+    private bool _isDragging;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     private static void Bootstrap()
@@ -65,16 +69,119 @@ public sealed class NewInventoryWindowUI : MonoBehaviour
     private void Update()
     {
         Keyboard keyboard = Keyboard.current;
-        if (keyboard == null) return;
+        if (keyboard != null)
+        {
+            if (keyboard.iKey.wasPressedThisFrame)
+            {
+                SetOpen(!IsOpen);
+            }
+            else if (IsOpen && keyboard.escapeKey.wasPressedThisFrame)
+            {
+                SetOpen(false);
+            }
+        }
 
-        if (keyboard.iKey.wasPressedThisFrame)
+        if (!IsOpen)
         {
-            SetOpen(!IsOpen);
+            _isDragging = false;
+            return;
         }
-        else if (IsOpen && keyboard.escapeKey.wasPressedThisFrame)
+
+        Mouse mouse = Mouse.current;
+        if (mouse == null)
         {
-            SetOpen(false);
+            _isDragging = false;
+            return;
         }
+
+        Vector2 pointer = ToGuiPosition(mouse.position.ReadValue());
+        Rect frameRect = GetFrameRect();
+
+        if (mouse.leftButton.wasPressedThisFrame)
+        {
+            if (frameRect.Contains(pointer))
+            {
+                _isDragging = true;
+                _dragOffset = pointer - frameRect.position;
+            }
+            else
+            {
+                _isDragging = false;
+            }
+        }
+
+        if (_isDragging && mouse.leftButton.isPressed)
+        {
+            _windowPosition = ClampWindowPosition(
+                pointer - _dragOffset,
+                frameRect.width,
+                frameRect.height);
+        }
+
+        if (mouse.leftButton.wasReleasedThisFrame)
+        {
+            _isDragging = false;
+        }
+    }
+
+    /// <summary>
+    /// Returns true only while the pointer is interacting with the inventory window.
+    /// The open inventory does not disable click-to-move elsewhere in the world.
+    /// </summary>
+    public static bool BlocksWorldInputAt(Vector2 pointerBottomLeft)
+    {
+        if (!IsOpen || _instance == null)
+        {
+            return false;
+        }
+
+        return _instance._isDragging || _instance.IsPointerInsideWindow(pointerBottomLeft);
+    }
+
+    private bool IsPointerInsideWindow(Vector2 pointerBottomLeft)
+    {
+        Vector2 pointer = ToGuiPosition(pointerBottomLeft);
+        return GetFrameRect().Contains(pointer);
+    }
+
+    private static Vector2 ToGuiPosition(Vector2 pointerBottomLeft)
+    {
+        return new Vector2(pointerBottomLeft.x, Screen.height - pointerBottomLeft.y);
+    }
+
+    private Rect GetFrameRect()
+    {
+        float scale = Mathf.Clamp(
+            Mathf.Min(Screen.width / 1920f, Screen.height / 1080f),
+            0.55f, 1.35f);
+
+        float width = Mathf.Min(1360f * scale, Screen.width - 24f);
+        float height = width * 9f / 16f;
+        if (height > Screen.height - 24f)
+        {
+            height = Screen.height - 24f;
+            width = height * 16f / 9f;
+        }
+
+        if (!_hasWindowPosition)
+        {
+            _windowPosition = new Vector2(
+                (Screen.width - width) * 0.5f,
+                (Screen.height - height) * 0.5f);
+            _hasWindowPosition = true;
+        }
+
+        _windowPosition = ClampWindowPosition(_windowPosition, width, height);
+        return new Rect(_windowPosition.x, _windowPosition.y, width, height);
+    }
+
+    private static Vector2 ClampWindowPosition(Vector2 position, float width, float height)
+    {
+        float maxX = Mathf.Max(0f, Screen.width - width);
+        float maxY = Mathf.Max(0f, Screen.height - height);
+        return new Vector2(
+            Mathf.Clamp(position.x, 0f, maxX),
+            Mathf.Clamp(position.y, 0f, maxY));
     }
 
     public static void ToggleFromHUD()
@@ -94,28 +201,15 @@ public sealed class NewInventoryWindowUI : MonoBehaviour
     private void SetOpen(bool open)
     {
         IsOpen = open;
+        if (!open)
+        {
+            _isDragging = false;
+        }
     }
 
     private void DrawWindow()
     {
-        float scale = Mathf.Clamp(
-            Mathf.Min(Screen.width / 1920f, Screen.height / 1080f),
-            0.55f, 1.35f);
-
-        float width = Mathf.Min(1360f * scale, Screen.width - 24f);
-        float height = width * 9f / 16f;
-        if (height > Screen.height - 24f)
-        {
-            height = Screen.height - 24f;
-            width = height * 16f / 9f;
-        }
-
-        Rect frameRect = new Rect(
-            (Screen.width - width) * 0.5f,
-            (Screen.height - height) * 0.5f,
-            width,
-            height);
-
+        Rect frameRect = GetFrameRect();
         Color previousColor = GUI.color;
 
         // The frame is 640x360. This inset matches its visible inner opening;
@@ -131,7 +225,7 @@ public sealed class NewInventoryWindowUI : MonoBehaviour
             GUI.color = new Color(0.012f, 0.045f, 0.15f, 0.80f);
             GUI.DrawTexture(backgroundRect, _blueBackgroundTexture, ScaleMode.StretchToFill, true);
 
-            // The inventory grid occupies the right two-thirds of the inner opening.
+            // The grid uses the same blue background as the rest of the window.
             DrawInventoryGrid(frameRect);
         }
 
@@ -146,15 +240,14 @@ public sealed class NewInventoryWindowUI : MonoBehaviour
 
     private void DrawInventoryGrid(Rect frameRect)
     {
-        // The grid occupies the right two-thirds of the frame's inner opening.
-        // Cells are flat and separated only by thin lines; the whole grid has
-        // one shared outer border rather than individual beveled cell borders.
+        // Seven columns by nine rows. The cells remain the same blue as the
+        // surrounding background; only the shared border and thin dividers are drawn.
         const float innerLeft = 31f;
         const float innerWidth = 578f;
         const float gridTop = 66f;
         const float gridHeight = 232f;
-        const int columns = 10;
-        const int rows = 7;
+        const int columns = 7;
+        const int rows = 9;
 
         float scaleX = frameRect.width / 640f;
         float scaleY = frameRect.height / 360f;
@@ -168,40 +261,37 @@ public sealed class NewInventoryWindowUI : MonoBehaviour
             gridHeight * scaleY);
 
         if (_blueBackgroundTexture == null || gridRect.width <= 0f || gridRect.height <= 0f)
+        {
             return;
+        }
 
         Color previousColor = GUI.color;
-        float scale = Mathf.Min(scaleX, scaleY);
-        float outerBorder = 2f * scale;
-        float lineWidth = 1f * scale;
-
-        // One shared outer frame and a flat, slightly darker interior.
-        DrawSolidRect(gridRect, new Color(0.25f, 0.17f, 0.095f, 0.96f));
-        Rect innerRect = new Rect(
-            gridRect.x + outerBorder,
-            gridRect.y + outerBorder,
-            gridRect.width - 2f * outerBorder,
-            gridRect.height - 2f * outerBorder);
-        DrawSolidRect(innerRect, new Color(0.018f, 0.045f, 0.105f, 0.60f));
-
-        // Simple uniform dividers; no shadows, raised edges or highlighted corners.
+        float lineWidth = Mathf.Max(1f, Mathf.Min(scaleX, scaleY));
         Color dividerColor = new Color(0.27f, 0.20f, 0.13f, 0.92f);
-        float cellWidth = innerRect.width / columns;
-        float cellHeight = innerRect.height / rows;
+
+        // One common outer border; there are no brown cell fills, shadows, bevels,
+        // raised edges or highlighted corners.
+        DrawSolidRect(new Rect(gridRect.x, gridRect.y, gridRect.width, lineWidth), dividerColor);
+        DrawSolidRect(new Rect(gridRect.x, gridRect.yMax - lineWidth, gridRect.width, lineWidth), dividerColor);
+        DrawSolidRect(new Rect(gridRect.x, gridRect.y, lineWidth, gridRect.height), dividerColor);
+        DrawSolidRect(new Rect(gridRect.xMax - lineWidth, gridRect.y, lineWidth, gridRect.height), dividerColor);
+
+        float cellWidth = gridRect.width / columns;
+        float cellHeight = gridRect.height / rows;
 
         for (int column = 1; column < columns; column++)
         {
-            float x = innerRect.x + cellWidth * column;
+            float x = gridRect.x + cellWidth * column;
             DrawSolidRect(
-                new Rect(x - lineWidth * 0.5f, innerRect.y, lineWidth, innerRect.height),
+                new Rect(x - lineWidth * 0.5f, gridRect.y, lineWidth, gridRect.height),
                 dividerColor);
         }
 
         for (int row = 1; row < rows; row++)
         {
-            float y = innerRect.y + cellHeight * row;
+            float y = gridRect.y + cellHeight * row;
             DrawSolidRect(
-                new Rect(innerRect.x, y - lineWidth * 0.5f, innerRect.width, lineWidth),
+                new Rect(gridRect.x, y - lineWidth * 0.5f, gridRect.width, lineWidth),
                 dividerColor);
         }
 
