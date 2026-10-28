@@ -76,7 +76,7 @@ public sealed class SoulshotVisual : MonoBehaviour
             ? Quaternion.identity
             : Quaternion.Euler(0f, 180f, 0f);
 
-        Vector3 center = new Vector3(0f, endSign * 0.595f, sideSign * 0.239f);
+        Vector3 center = new Vector3(0f, endSign * 0.550f, sideSign * 0.280f);
         AddMeshPart("EndCapDiamondFrame_" + endSign + "_" + sideSign, badgeFrameMesh,
             bronzeAccentMaterial, center, sideRotation, false);
         AddMeshPart("EndCapDiamondInset_" + endSign + "_" + sideSign, badgeInsetMesh,
@@ -151,9 +151,9 @@ public sealed class SoulshotVisual : MonoBehaviour
         };
         endCapMesh = BuildProfileMesh("Soulshot_D_ForgedEndCap", capProfile, 8);
         accentRingMesh = BuildTorus("Soulshot_D_RaisedBronzeCollar", 0.263f, 0.010f, 48, 8);
-        badgeFrameMesh = BuildDiamondFrame("Soulshot_D_EngravedDiamondFrame", 0.047f, 0.052f, 0.010f);
-        badgeInsetMesh = BuildSolidDiamond("Soulshot_D_EngravedDiamondInset", 0.031f, 0.036f);
-        badgeGemMesh = BuildSolidDiamond("Soulshot_D_EngravedDiamondBlueGem", 0.013f, 0.016f);
+        badgeFrameMesh = BuildDiamondFrame("Soulshot_D_EngravedDiamondFrame", 0.038f, 0.030f, 0.008f);
+        badgeInsetMesh = BuildSolidDiamond("Soulshot_D_EngravedDiamondInset", 0.024f, 0.021f);
+        badgeGemMesh = BuildSolidDiamond("Soulshot_D_EngravedDiamondBlueGem", 0.010f, 0.010f);
 
         Color[] crystalShades =
         {
