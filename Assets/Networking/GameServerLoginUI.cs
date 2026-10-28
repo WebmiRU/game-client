@@ -1951,16 +1951,24 @@ public sealed class GameServerLoginUI : MonoBehaviour
                 view.transform.rotation = Quaternion.Euler(0f, 45f, 0f);
             }
 
-            // Ground drops appear already resting on the client landscape. Do not animate
-            // them from the server's Y coordinate: even a small heightmap mismatch would
-            // make the item visibly start below ground or sink during the animation.
-            GroundItemDropAnimation oldDropAnimation = view.GetComponent<GroundItemDropAnimation>();
-            if (oldDropAnimation != null)
+            // Animate every newly created drop from one metre above the actual client
+            // terrain. The animation ends at the computed resting height, so heightmap
+            // differences cannot leave the capsule underground. Existing views are only
+            // retargeted; their fall is never restarted by regular world snapshots.
+            GroundItemDropAnimation dropAnimation = view.GetComponent<GroundItemDropAnimation>();
+            if (dropAnimation == null)
             {
-                oldDropAnimation.enabled = false;
-                Destroy(oldDropAnimation);
+                dropAnimation = view.AddComponent<GroundItemDropAnimation>();
             }
-            view.transform.position = restingPosition;
+
+            if (isNewView)
+            {
+                dropAnimation.Begin(restingPosition, 1f, 0.45f);
+            }
+            else
+            {
+                dropAnimation.SetRestingPosition(restingPosition);
+            }
 
             string itemName = string.IsNullOrWhiteSpace(item.name)
                 ? (string.IsNullOrWhiteSpace(item.itemTemplate) ? "Предмет" : item.itemTemplate)
