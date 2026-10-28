@@ -1931,6 +1931,23 @@ public sealed class GameServerLoginUI : MonoBehaviour
             if (hasClientGround)
             {
                 baseY = localGroundY;
+
+                // The capsule lies along world X. On a slope, using only the centre
+                // height can bury one end of the mesh, so rest it above the highest
+                // sampled terrain point along its length.
+                float halfLength = (SoulshotVisual.CapsuleHalfCylinder +
+                    SoulshotVisual.CapsuleRadius) * SoulshotVisual.ModelScale;
+                const int terrainSamples = 4;
+                for (int sample = 0; sample <= terrainSamples; sample++)
+                {
+                    float offset = Mathf.Lerp(-halfLength, halfLength,
+                        sample / (float)terrainSamples);
+                    if (TryGetTerrainSurfaceY(
+                        item.position.x + offset, item.position.z, out localGroundY))
+                    {
+                        baseY = Mathf.Max(baseY, localGroundY);
+                    }
+                }
             }
 
             Vector3 restingPosition;
