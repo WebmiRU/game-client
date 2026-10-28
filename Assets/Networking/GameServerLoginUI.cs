@@ -880,6 +880,7 @@ public sealed class GameServerLoginUI : MonoBehaviour
                 if (string.Equals(message.playerId, _authenticatedUsername, StringComparison.OrdinalIgnoreCase))
                 {
                     _playerInventory = message.inventory ?? Array.Empty<WorldInventoryStack>();
+                    PublishInventoryToUI();
                     Debug.Log("Picked up " + (string.IsNullOrWhiteSpace(message.itemName) ? "item" : message.itemName) +
                         "; inventory stacks=" + _playerInventory.Length + ".");
                 }
@@ -1087,6 +1088,31 @@ public sealed class GameServerLoginUI : MonoBehaviour
         }
     }
 
+    private void PublishInventoryToUI()
+    {
+        WorldInventoryStack[] inventory = _playerInventory ?? Array.Empty<WorldInventoryStack>();
+        NewInventoryWindowUI.InventoryItemData[] items =
+            new NewInventoryWindowUI.InventoryItemData[inventory.Length];
+
+        for (int index = 0; index < inventory.Length; index++)
+        {
+            WorldInventoryStack stack = inventory[index];
+            if (stack == null)
+            {
+                continue;
+            }
+
+            items[index] = new NewInventoryWindowUI.InventoryItemData
+            {
+                itemTemplate = stack.itemTemplate ?? string.Empty,
+                name = stack.name ?? string.Empty,
+                quantity = stack.quantity
+            };
+        }
+
+        NewInventoryWindowUI.SetInventory(items);
+    }
+
     private void ApplyWorldSnapshot(ServerMessage message)
     {
         if (message.playerMaxHealth > 0)
@@ -1098,6 +1124,7 @@ public sealed class GameServerLoginUI : MonoBehaviour
         if (!message.partialSnapshot)
         {
             _playerInventory = message.inventory ?? Array.Empty<WorldInventoryStack>();
+            PublishInventoryToUI();
         }
 
         if (message.attackSpeed > 0f &&
@@ -2546,6 +2573,7 @@ public sealed class GameServerLoginUI : MonoBehaviour
         _serverAttackSpeed = 1f;
         _hasServerAttackSpeed = false;
         _playerInventory = Array.Empty<WorldInventoryStack>();
+        PublishInventoryToUI();
         while (_incomingMessages.TryDequeue(out _)) { }
 
         SemaphoreSlim signal;
