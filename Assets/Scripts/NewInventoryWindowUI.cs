@@ -545,11 +545,11 @@ public sealed class NewInventoryWindowUI : MonoBehaviour
                 float narrowReflection = Mathf.Exp(-0.5f * Mathf.Pow((py + 0.17f) / 0.085f, 2f));
                 float darkReflection = Mathf.Exp(-0.5f * Mathf.Pow(py / 0.095f, 2f));
 
-                Color color = new Color(0.004f, 0.045f, 0.20f, edge);
-                color = Color.Lerp(color, new Color(0.006f, 0.13f, 0.43f, edge), broadReflection * 0.8f);
-                color = Color.Lerp(color, new Color(0.015f, 0.30f, 0.72f, edge), narrowReflection * 0.55f);
-                color = Color.Lerp(color, new Color(0.001f, 0.018f, 0.085f, edge), darkReflection * 0.52f);
-                color = Color.Lerp(color, new Color(0.23f, 0.52f, 0.88f, edge), narrowReflection * 0.22f);
+                Color color = new Color(0.004f, 0.070f, 0.24f, edge);
+                color = Color.Lerp(color, new Color(0.008f, 0.26f, 0.62f, edge), broadReflection * 0.8f);
+                color = Color.Lerp(color, new Color(0.02f, 0.48f, 0.85f, edge), narrowReflection * 0.55f);
+                color = Color.Lerp(color, new Color(0.001f, 0.025f, 0.105f, edge), darkReflection * 0.52f);
+                color = Color.Lerp(color, new Color(0.28f, 0.62f, 0.96f, edge), narrowReflection * 0.22f);
 
                 // Thin aluminium seams stay silver; the enamel itself is smooth and glossy,
                 // with no coarse diamond braid that would read as scratches at inventory size.
