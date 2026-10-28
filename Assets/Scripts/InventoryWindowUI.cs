@@ -517,14 +517,14 @@ public sealed class InventoryWindowUI : MonoBehaviour
                 new Vector2(402, 39), new Vector2(402 + side * 23, 41),
                 new Vector2(402 + side * 36, 19), new Vector2(402 + side * 66, 23), highlight, 1);
             DrawTextureBezier(pixels, width, height,
-                new Vector2(402, 40), new Vector2(423, 51),
-                new Vector2(439, 42), new Vector2(448, 34), mid, 2);
+                new Vector2(400 + side * 2, 40), new Vector2(400 + side * 23, 51),
+                new Vector2(400 + side * 39, 42), new Vector2(400 + side * 48, 34), mid, 2);
             DrawTextureBezier(pixels, width, height,
-                new Vector2(450, 24), new Vector2(468, 30),
-                new Vector2(476, 22), new Vector2(490, 26), mid, 2);
+                new Vector2(400 + side * 50, 24), new Vector2(400 + side * 68, 30),
+                new Vector2(400 + side * 76, 22), new Vector2(400 + side * 90, 26), mid, 2);
             DrawTextureBezier(pixels, width, height,
-                new Vector2(462, 28), new Vector2(482, 36),
-                new Vector2(504, 31), new Vector2(519, 26), highlight, 1);
+                new Vector2(400 + side * 62, 28), new Vector2(400 + side * 82, 36),
+                new Vector2(400 + side * 104, 31), new Vector2(400 + side * 119, 26), highlight, 1);
         }
         DrawTextureDiamond(pixels, width, height, 400, 18, 13, mid, highlight);
         DrawTextureDiamond(pixels, width, height, 20, 225, 7, mid, highlight);
