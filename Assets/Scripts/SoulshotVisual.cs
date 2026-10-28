@@ -61,8 +61,8 @@ public sealed class SoulshotVisual : MonoBehaviour
         const float halfCylinder = 0.50f;
         coreMesh = BuildCapsule(capsuleRadius, halfCylinder, 64, 24, 64);
 
-        coreMaterial = MakeMaterial("Soulshot D Pepsi Blue Metallic Capsule",
-            Color.white, BuildBlueMetalTexture(), 0.68f, 0.94f, false);
+        coreMaterial = MakeMaterial("Soulshot D Deep Navy Blue Metallic Capsule",
+            Color.white, BuildBlueMetalTexture(), 0.48f, 0.94f, false);
         if (coreMaterial.HasProperty("_EmissionColor"))
         {
             // Subtle blue emission, with the main appearance still coming from the metallic texture.
@@ -157,10 +157,12 @@ public sealed class SoulshotVisual : MonoBehaviour
                 float noise = (Noise(x, y) - 0.5f) * 0.018f;
                 float shine = Mathf.Clamp01(0.08f + broadHighlight + secondaryHighlight + fineBrushing + noise);
 
+                // Deep, highly saturated navy/royal blue. Even the highlights stay blue,
+                // never drifting into cyan or pale sky-blue.
                 Color color = new Color(
-                    (5f + 10f * shine) / 255f,
-                    (24f + 42f * shine) / 255f,
-                    (92f + 116f * shine) / 255f,
+                    (2f + 5f * shine) / 255f,
+                    (6f + 18f * shine) / 255f,
+                    (48f + 124f * shine) / 255f,
                     1f);
 
                 if (inWeaveBand)
