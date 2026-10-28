@@ -540,26 +540,24 @@ public sealed class NewInventoryWindowUI : MonoBehaviour
                     continue;
                 }
 
-                float edge = Mathf.Clamp01((0.315f - distance) / 0.035f);
-                float highlight = Mathf.Clamp01(0.65f - Mathf.Abs(py + 0.07f) * 1.25f);
-                Color color = new Color(
-                    0.018f + highlight * 0.015f,
-                    0.035f + highlight * 0.065f,
-                    0.15f + highlight * 0.31f,
-                    edge);
+                float edge = Mathf.Clamp01((0.315f - distance) / 0.022f);
+                float broadReflection = Mathf.Exp(-0.5f * Mathf.Pow((py + 0.10f) / 0.36f, 2f));
+                float narrowReflection = Mathf.Exp(-0.5f * Mathf.Pow((py + 0.17f) / 0.085f, 2f));
+                float darkReflection = Mathf.Exp(-0.5f * Mathf.Pow(py / 0.095f, 2f));
 
-                // Silver end collars and a fine crossing weave echo the 3D world model.
+                Color color = new Color(0.004f, 0.045f, 0.20f, edge);
+                color = Color.Lerp(color, new Color(0.006f, 0.13f, 0.43f, edge), broadReflection * 0.8f);
+                color = Color.Lerp(color, new Color(0.015f, 0.30f, 0.72f, edge), narrowReflection * 0.55f);
+                color = Color.Lerp(color, new Color(0.001f, 0.018f, 0.085f, edge), darkReflection * 0.52f);
+                color = Color.Lerp(color, new Color(0.23f, 0.52f, 0.88f, edge), narrowReflection * 0.22f);
+
+                // Thin aluminium seams stay silver; the enamel itself is smooth and glossy,
+                // with no coarse diamond braid that would read as scratches at inventory size.
                 bool collar = Mathf.Abs(Mathf.Abs(px) - 0.395f) < 0.025f && Mathf.Abs(py) < 0.25f;
-                float weaveA = Mathf.Abs(Mathf.Repeat((px + py * 0.9f) * 13f, 1f) - 0.5f);
-                float weaveB = Mathf.Abs(Mathf.Repeat((px - py * 0.9f) * 13f, 1f) - 0.5f);
                 if (collar)
                 {
-                    color = new Color(0.68f, 0.76f, 0.86f, edge);
-                }
-                else if (Mathf.Abs(px) < 0.34f && Mathf.Min(weaveA, weaveB) < 0.055f)
-                {
-                    color = Color.Lerp(color, new Color(0.48f, 0.62f, 0.79f, edge), 0.72f);
-                    color.a = edge;
+                    float silver = 0.64f + 0.11f * Mathf.Clamp01(narrowReflection);
+                    color = new Color(silver * 0.92f, silver * 0.96f, silver, edge);
                 }
 
                 pixels[index] = new Color32(
@@ -572,7 +570,7 @@ public sealed class NewInventoryWindowUI : MonoBehaviour
 
         Texture2D texture = new Texture2D(size, size, TextureFormat.RGBA32, false)
         {
-            name = "InventorySoulshotDGradeIcon",
+            name = "InventorySoulshotGlossyPepsiBlueIcon",
             hideFlags = HideFlags.HideAndDontSave,
             filterMode = FilterMode.Bilinear,
             wrapMode = TextureWrapMode.Clamp
