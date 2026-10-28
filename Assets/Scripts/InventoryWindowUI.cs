@@ -610,10 +610,15 @@ public sealed class InventoryWindowUI : MonoBehaviour
 
     private void ClampWindowPosition(float width, float height)
     {
-        float maxX = Mathf.Max(12f, Screen.width - width - 12f);
-        float maxY = Mathf.Max(12f, Screen.height - height - 12f);
-        _windowPosition.x = Mathf.Clamp(_windowPosition.x, 12f, maxX);
-        _windowPosition.y = Mathf.Clamp(_windowPosition.y, 12f, maxY);
+        // IMGUI draws texture edges on the physical pixel grid. Fractional window
+        // positions make 1 px slot borders alternate between adjacent sides while
+        // dragging, which looks like a yellow frame flickering around each cell.
+        // Snap the window origin to whole screen pixels before any child rects are
+        // calculated, so the entire grid moves as one stable pixel-aligned surface.
+        float maxX = Mathf.Max(12f, Mathf.Floor(Screen.width - width - 12f));
+        float maxY = Mathf.Max(12f, Mathf.Floor(Screen.height - height - 12f));
+        _windowPosition.x = Mathf.Round(Mathf.Clamp(_windowPosition.x, 12f, maxX));
+        _windowPosition.y = Mathf.Round(Mathf.Clamp(_windowPosition.y, 12f, maxY));
     }
 
     private static Rect InsetGuiRect(Rect rect, float inset)
