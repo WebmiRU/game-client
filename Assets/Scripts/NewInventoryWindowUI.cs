@@ -11,6 +11,21 @@ public sealed class NewInventoryWindowUI : MonoBehaviour
     public static bool IsOpen { get; private set; }
 
     private static NewInventoryWindowUI _instance;
+
+    [System.Serializable]
+    public struct InventoryItemData
+    {
+        public string itemTemplate;
+        public string name;
+        public int quantity;
+    }
+
+    private readonly List<InventoryItemData> _inventoryItems = new List<InventoryItemData>();
+    private Texture2D _soulshotIconTexture;
+    private Texture2D _genericItemIconTexture;
+    private GUIStyle _inventoryQuantityStyle;
+    private GUIStyle _inventoryTooltipStyle;
+
     private Texture2D _frameTexture;
     private Color32[] _frameAlphaPixels;
     private Texture2D _blueBackgroundTexture;
@@ -69,7 +84,10 @@ public sealed class NewInventoryWindowUI : MonoBehaviour
         };
         _blueBackgroundTexture.SetPixel(0, 0, Color.white);
         _blueBackgroundTexture.Apply(false, true);
-        Debug.Log("NewInventoryWindowUI: initialized image frame and translucent dark-blue background.", this);
+
+        _soulshotIconTexture = CreateSoulshotInventoryIcon();
+        _genericItemIconTexture = CreateGenericInventoryIcon();
+        Debug.Log("NewInventoryWindowUI: initialized image frame, inventory icons and translucent dark-blue background.", this);
     }
 
     private void Update()
@@ -253,6 +271,35 @@ public sealed class NewInventoryWindowUI : MonoBehaviour
         }
     }
 
+    /// <summary>Receives the authoritative item stacks from the game server.</summary>
+    public static void SetInventory(InventoryItemData[] items)
+    {
+        NewInventoryWindowUI window = GetOrCreate();
+        window._inventoryItems.Clear();
+
+        if (items == null)
+        {
+            return;
+        }
+
+        foreach (InventoryItemData item in items)
+        {
+            if (item.quantity <= 0)
+            {
+                continue;
+            }
+
+            window._inventoryItems.Add(new InventoryItemData
+            {
+                itemTemplate = item.itemTemplate ?? string.Empty,
+                name = string.IsNullOrWhiteSpace(item.name)
+                    ? (string.IsNullOrWhiteSpace(item.itemTemplate) ? "Предмет" : item.itemTemplate)
+                    : item.name,
+                quantity = item.quantity
+            });
+        }
+    }
+
     private void SetOpen(bool open)
     {
         IsOpen = open;
@@ -360,7 +407,208 @@ public sealed class NewInventoryWindowUI : MonoBehaviour
                 dividerColor);
         }
 
+        DrawInventoryItems(gridRect, columns, rows);
         GUI.color = previousColor;
+    }
+
+    private void DrawInventoryItems(Rect gridRect, int columns, int rows)
+    {
+        if (_inventoryItems.Count == 0)
+        {
+            return;
+        }
+
+        EnsureInventoryItemStyles();
+        float cellWidth = gridRect.width / columns;
+        float cellHeight = gridRect.height / rows;
+        int visibleCount = Mathf.Min(_inventoryItems.Count, columns * rows);
+        Event currentEvent = Event.current;
+
+        for (int index = 0; index < visibleCount; index++)
+        {
+            InventoryItemData item = _inventoryItems[index];
+            int row = index / columns;
+            int column = index % columns;
+            Rect cell = new Rect(
+                gridRect.x + column * cellWidth,
+                gridRect.y + row * cellHeight,
+                cellWidth,
+                cellHeight);
+
+            float padding = Mathf.Max(2f, Mathf.Min(cellWidth, cellHeight) * 0.08f);
+            Rect iconRect = new Rect(
+                cell.x + padding,
+                cell.y + padding,
+                cell.width - padding * 2f,
+                cell.height - padding * 2f);
+
+            bool isSoulshot = item.itemTemplate.IndexOf("soulshot", System.StringComparison.OrdinalIgnoreCase) >= 0;
+            Texture2D icon = isSoulshot ? _soulshotIconTexture : _genericItemIconTexture;
+            if (icon != null)
+            {
+                Color oldColor = GUI.color;
+                GUI.color = Color.white;
+                GUI.DrawTexture(iconRect, icon, ScaleMode.ScaleToFit, true);
+                GUI.color = oldColor;
+            }
+
+            if (item.quantity > 1)
+            {
+                float badgeWidth = Mathf.Min(22f, cell.width * 0.62f);
+                float badgeHeight = Mathf.Min(13f, cell.height * 0.42f);
+                Rect quantityRect = new Rect(
+                    cell.xMax - badgeWidth - 1f,
+                    cell.yMax - badgeHeight - 1f,
+                    badgeWidth,
+                    badgeHeight);
+                DrawSolidRect(quantityRect, new Color(0.015f, 0.02f, 0.055f, 0.92f));
+                GUI.Label(new Rect(quantityRect.x - 1f, quantityRect.y - 1f,
+                    quantityRect.width + 2f, quantityRect.height + 2f),
+                    item.quantity.ToString(), _inventoryQuantityStyle);
+            }
+
+            if (cell.Contains(currentEvent.mousePosition))
+            {
+                GUIContent tooltipContent = new GUIContent(item.name);
+                Vector2 tooltipSize = _inventoryTooltipStyle.CalcSize(tooltipContent);
+                float tooltipWidth = Mathf.Min(
+                    Mathf.Max(tooltipSize.x + 14f, 100f),
+                    Screen.width * 0.5f);
+                Rect tooltipRect = new Rect(
+                    Mathf.Clamp(currentEvent.mousePosition.x + 14f, 4f, Screen.width - tooltipWidth - 4f),
+                    Mathf.Clamp(currentEvent.mousePosition.y + 16f, 4f, Screen.height - 28f),
+                    tooltipWidth,
+                    24f);
+                GUI.Box(tooltipRect, GUIContent.none);
+                GUI.Label(new Rect(tooltipRect.x + 6f, tooltipRect.y + 1f,
+                    tooltipRect.width - 12f, tooltipRect.height - 2f),
+                    item.name, _inventoryTooltipStyle);
+            }
+        }
+    }
+
+    private void EnsureInventoryItemStyles()
+    {
+        if (_inventoryQuantityStyle != null && _inventoryTooltipStyle != null)
+        {
+            return;
+        }
+
+        _inventoryQuantityStyle = new GUIStyle(GUI.skin.label)
+        {
+            alignment = TextAnchor.LowerRight,
+            fontStyle = FontStyle.Bold,
+            fontSize = Mathf.Clamp(Mathf.RoundToInt(Mathf.Min(Screen.width / 1920f, Screen.height / 1080f) * 15f), 8, 13),
+            wordWrap = false,
+            clipping = TextClipping.Clip,
+            padding = new RectOffset(1, 2, 0, 0)
+        };
+        _inventoryQuantityStyle.normal.textColor = Color.white;
+
+        _inventoryTooltipStyle = new GUIStyle(GUI.skin.label)
+        {
+            alignment = TextAnchor.MiddleLeft,
+            fontStyle = FontStyle.Bold,
+            fontSize = Mathf.Clamp(Mathf.RoundToInt(Mathf.Min(Screen.width / 1920f, Screen.height / 1080f) * 14f), 9, 14),
+            wordWrap = false,
+            clipping = TextClipping.Clip,
+            padding = new RectOffset(2, 2, 0, 0)
+        };
+        _inventoryTooltipStyle.normal.textColor = new Color(1f, 0.84f, 0.24f, 1f);
+    }
+
+    private static Texture2D CreateSoulshotInventoryIcon()
+    {
+        const int size = 64;
+        Color32[] pixels = new Color32[size * size];
+
+        for (int y = 0; y < size; y++)
+        {
+            float py = ((y + 0.5f) / size) * 2f - 1f;
+            for (int x = 0; x < size; x++)
+            {
+                float px = ((x + 0.5f) / size) * 2f - 1f;
+                float dx = Mathf.Max(0f, Mathf.Abs(px) - 0.40f);
+                float distance = Mathf.Sqrt(dx * dx + py * py);
+                int index = y * size + x;
+
+                if (distance >= 0.315f)
+                {
+                    pixels[index] = new Color32(0, 0, 0, 0);
+                    continue;
+                }
+
+                float edge = Mathf.Clamp01((0.315f - distance) / 0.035f);
+                float highlight = Mathf.Clamp01(0.65f - Mathf.Abs(py + 0.07f) * 1.25f);
+                Color color = new Color(
+                    0.018f + highlight * 0.015f,
+                    0.035f + highlight * 0.065f,
+                    0.15f + highlight * 0.31f,
+                    edge);
+
+                // Silver end collars and a fine crossing weave echo the 3D world model.
+                bool collar = Mathf.Abs(Mathf.Abs(px) - 0.395f) < 0.025f && Mathf.Abs(py) < 0.25f;
+                float weaveA = Mathf.Abs(Mathf.Repeat((px + py * 0.9f) * 13f, 1f) - 0.5f);
+                float weaveB = Mathf.Abs(Mathf.Repeat((px - py * 0.9f) * 13f, 1f) - 0.5f);
+                if (collar)
+                {
+                    color = new Color(0.68f, 0.76f, 0.86f, edge);
+                }
+                else if (Mathf.Abs(px) < 0.34f && Mathf.Min(weaveA, weaveB) < 0.055f)
+                {
+                    color = Color.Lerp(color, new Color(0.48f, 0.62f, 0.79f, edge), 0.72f);
+                    color.a = edge;
+                }
+
+                pixels[index] = new Color32(
+                    (byte)Mathf.Clamp(Mathf.RoundToInt(color.r * 255f), 0, 255),
+                    (byte)Mathf.Clamp(Mathf.RoundToInt(color.g * 255f), 0, 255),
+                    (byte)Mathf.Clamp(Mathf.RoundToInt(color.b * 255f), 0, 255),
+                    (byte)Mathf.Clamp(Mathf.RoundToInt(color.a * 255f), 0, 255));
+            }
+        }
+
+        Texture2D texture = new Texture2D(size, size, TextureFormat.RGBA32, false)
+        {
+            name = "InventorySoulshotDGradeIcon",
+            hideFlags = HideFlags.HideAndDontSave,
+            filterMode = FilterMode.Bilinear,
+            wrapMode = TextureWrapMode.Clamp
+        };
+        texture.SetPixels32(pixels);
+        texture.Apply(false, true);
+        return texture;
+    }
+
+    private static Texture2D CreateGenericInventoryIcon()
+    {
+        const int size = 32;
+        Color32[] pixels = new Color32[size * size];
+        for (int y = 0; y < size; y++)
+        {
+            for (int x = 0; x < size; x++)
+            {
+                float px = Mathf.Abs((x + 0.5f) / size * 2f - 1f);
+                float py = Mathf.Abs((y + 0.5f) / size * 2f - 1f);
+                bool diamond = px + py < 0.78f;
+                bool rim = px + py < 0.9f && !diamond;
+                Color32 color = diamond
+                    ? new Color32(174, 128, 48, 255)
+                    : rim ? new Color32(78, 58, 31, 220) : new Color32(0, 0, 0, 0);
+                pixels[y * size + x] = color;
+            }
+        }
+
+        Texture2D texture = new Texture2D(size, size, TextureFormat.RGBA32, false)
+        {
+            name = "InventoryGenericItemIcon",
+            hideFlags = HideFlags.HideAndDontSave,
+            filterMode = FilterMode.Bilinear,
+            wrapMode = TextureWrapMode.Clamp
+        };
+        texture.SetPixels32(pixels);
+        texture.Apply(false, true);
+        return texture;
     }
 
     private void DrawSolidRect(Rect rect, Color color)
@@ -382,5 +630,7 @@ public sealed class NewInventoryWindowUI : MonoBehaviour
         }
 
         // Both textures are loaded from Resources; Unity owns their asset lifetimes.
+        if (_soulshotIconTexture != null) Destroy(_soulshotIconTexture);
+        if (_genericItemIconTexture != null) Destroy(_genericItemIconTexture);
     }
 }
