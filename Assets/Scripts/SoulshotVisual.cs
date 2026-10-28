@@ -169,10 +169,10 @@ public sealed class SoulshotVisual : MonoBehaviour
         crystalMaterials = new Material[crystalShades.Length];
         for (int i = 0; i < crystalShades.Length; i++)
         {
-            float emission = (i == 3 || i == 6) ? 0.26f : ((i == 2) ? 0.10f : 0.025f);
+            float emission = (i == 3 || i == 6) ? 0.055f : ((i == 2) ? 0.025f : 0.004f);
             crystalMaterials[i] = MakeLitMaterial(
                 "Soulshot D Crystal Facet " + i, crystalShades[i],
-                0.16f, 0.78f, crystalShades[i] * emission);
+                0.10f, 0.70f, crystalShades[i] * emission);
         }
 
         Color[] metalShades =
@@ -191,13 +191,13 @@ public sealed class SoulshotVisual : MonoBehaviour
         {
             endCapMaterials[i] = MakeLitMaterial(
                 "Soulshot D Forged Bronze Facet " + i, metalShades[i],
-                0.72f, 0.76f, metalShades[i] * 0.012f);
+                0.52f, 0.68f, Color.black);
         }
 
         bronzeAccentMaterial = MakeLitMaterial(
             "Soulshot D Warm Bronze Edges",
-            new Color(0.48f, 0.365f, 0.225f), 0.78f, 0.82f,
-            new Color(0.018f, 0.010f, 0.003f));
+            new Color(0.48f, 0.365f, 0.225f), 0.58f, 0.72f,
+            Color.black);
         darkEngravingMaterial = MakeLitMaterial(
             "Soulshot D Engraving Shadow",
             new Color(0.028f, 0.025f, 0.021f), 0.55f, 0.64f, Color.black);
