@@ -10,11 +10,9 @@ using UnityEngine.Rendering;
 [DisallowMultipleComponent]
 public sealed class SoulshotVisual : MonoBehaviour
 {
-    private static Mesh glassMesh;
     private static Mesh coreMesh;
     private static Mesh ringMesh;
     private static Mesh braidMesh;
-    private static Material glassMaterial;
     private static Material coreMaterial;
     private static Material silverMaterial;
     private static bool built;
@@ -30,11 +28,19 @@ public sealed class SoulshotVisual : MonoBehaviour
         modelRoot.transform.SetParent(transform, false);
         modelRoot.transform.localScale = Vector3.one * 0.82f;
 
-        AddPart("BlueGlassCore", coreMesh, coreMaterial, Vector3.zero, false);
-        AddPart("OuterGlassCapsule", glassMesh, glassMaterial, Vector3.zero, false);
-        AddPart("CrossedDiamondMetalWeave", braidMesh, silverMaterial, Vector3.zero, true);
+        AddPart("DGradeBlueCapsule", coreMesh, coreMaterial, Vector3.zero, false);
+        AddPart("SquareDiamondMetalWeave", braidMesh, silverMaterial, Vector3.zero, true);
         AddPart("LowerMetalCollar", ringMesh, silverMaterial, new Vector3(0f, -0.255f, 0f), true);
         AddPart("UpperMetalCollar", ringMesh, silverMaterial, new Vector3(0f, 0.255f, 0f), true);
+
+        GameObject glowObject = new GameObject("SubtleBlueLight");
+        glowObject.transform.SetParent(modelRoot.transform, false);
+        Light blueLight = glowObject.AddComponent<Light>();
+        blueLight.type = LightType.Point;
+        blueLight.color = new Color(0.12f, 0.34f, 1f, 1f);
+        blueLight.intensity = 0.18f;
+        blueLight.range = 0.85f;
+        blueLight.shadows = LightShadows.None;
     }
 
     private void AddPart(string partName, Mesh mesh, Material material, Vector3 localPosition, bool castShadows)
@@ -55,15 +61,20 @@ public sealed class SoulshotVisual : MonoBehaviour
     {
         if (built) return;
 
-        glassMesh = BuildCapsule(0.30f, 0.25f, 40, 12, 6);
-        coreMesh = BuildCapsule(0.278f, 0.22f, 40, 12, 6);
+        // A long opaque capsule avoids the milky translucent shell over the blue glass.
+        coreMesh = BuildCapsule(0.278f, 0.50f, 48, 16, 8);
         ringMesh = BuildTorus(0.292f, 0.022f, 48, 10);
-        braidMesh = BuildBraid(0.311f, 0.248f, 6, 1.12f, 0.012f, 112, 6);
+        // The pitch along the axis equals the pitch between neighbouring strands around the capsule,
+        // so crossing wires create square cells instead of long, flattened diamonds.
+        braidMesh = BuildBraid(0.311f, 0.248f, 6, 1.52f, 0.014f, 160, 8);
 
         coreMaterial = MakeMaterial("Soulshot D Blue Glass", new Color(0.055f, 0.19f, 0.48f, 1f),
-            BuildBlueGlassTexture(), 0.24f, 0.91f, false);
-        glassMaterial = MakeMaterial("Soulshot Clear Blue Glass", new Color(0.42f, 0.69f, 0.93f, 0.17f),
-            null, 0.18f, 0.96f, true);
+            BuildBlueGlassTexture(), 0.12f, 0.96f, false);
+        if (coreMaterial.HasProperty("_EmissionColor"))
+        {
+            coreMaterial.SetColor("_EmissionColor", new Color(0.012f, 0.055f, 0.22f, 1f));
+            coreMaterial.EnableKeyword("_EMISSION");
+        }
         silverMaterial = MakeMaterial("Soulshot Silver Diamond Braid", new Color(0.82f, 0.84f, 0.81f, 1f),
             BuildSilverTexture(), 0.82f, 0.79f, false);
         built = true;

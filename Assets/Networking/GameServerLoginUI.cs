@@ -1756,20 +1756,17 @@ public sealed class GameServerLoginUI : MonoBehaviour
                 ? (string.IsNullOrWhiteSpace(item.itemTemplate) ? "Предмет" : item.itemTemplate)
                 : item.name;
             string displayName = item.quantity > 1 ? itemName + " x" + item.quantity : itemName;
+
+            // Ground-item labels are intentionally hidden; the target remains selectable by its collider.
             Transform labelTransform = view.transform.Find("NameLabel");
-            TextMesh itemLabel = labelTransform != null ? labelTransform.GetComponent<TextMesh>() : null;
-            if (itemLabel == null)
+            if (labelTransform != null)
             {
-                itemLabel = CreateWorldNameLabel(view, displayName, isSoulshot ? 0.52f : itemSize * 0.5f + 0.45f);
-            }
-            else
-            {
-                itemLabel.text = displayName;
+                Destroy(labelTransform.gameObject);
             }
 
             WorldTargetable targetable = view.GetComponent<WorldTargetable>();
             if (targetable == null) targetable = view.AddComponent<WorldTargetable>();
-            targetable.Configure("item", item.id, displayName, itemLabel);
+            targetable.Configure("item", item.id, displayName, null);
         }
 
         List<string> staleIDs = new List<string>();

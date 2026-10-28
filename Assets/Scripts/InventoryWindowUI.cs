@@ -19,6 +19,8 @@ public sealed class InventoryWindowUI : MonoBehaviour
 
     public static bool IsOpen { get; private set; }
     private GameObject window;
+    private Button inventoryToggleButton;
+    private Text inventoryToggleCaption;
     private Camera previewCamera;
     private RenderTexture previewTexture;
     private RawImage characterImage;
@@ -51,6 +53,7 @@ public sealed class InventoryWindowUI : MonoBehaviour
         BuildCanvasAndWindow();
         window.SetActive(false);
         IsOpen = false;
+        RefreshInventoryToggleCaption();
     }
 
     private void Update()
@@ -84,6 +87,7 @@ public sealed class InventoryWindowUI : MonoBehaviour
         IsOpen = open;
         if (window != null) window.SetActive(open);
         if (previewCamera != null) previewCamera.enabled = open;
+        RefreshInventoryToggleCaption();
         if (open) RefreshCharacterPreview();
     }
 
@@ -153,6 +157,38 @@ public sealed class InventoryWindowUI : MonoBehaviour
 
         BuildPaperDoll(interior.transform);
         BuildItemGrid(interior.transform);
+        BuildHudToggle(canvas.transform);
+    }
+
+    private void BuildHudToggle(Transform canvasRoot)
+    {
+        GameObject toggleObject = CreateRect(canvasRoot, "InventoryToggleButton",
+            new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(1f, 1f),
+            new Vector2(-202f, -66f), new Vector2(-18f, -18f));
+        Image background = toggleObject.AddComponent<Image>();
+        background.color = new Color(0.15f, 0.13f, 0.105f, 0.96f);
+        background.raycastTarget = true;
+
+        inventoryToggleButton = toggleObject.AddComponent<Button>();
+        inventoryToggleButton.targetGraphic = background;
+        ColorBlock colors = inventoryToggleButton.colors;
+        colors.normalColor = background.color;
+        colors.highlightedColor = new Color(0.32f, 0.27f, 0.19f, 1f);
+        colors.pressedColor = new Color(0.09f, 0.08f, 0.065f, 1f);
+        colors.selectedColor = background.color;
+        inventoryToggleButton.colors = colors;
+        inventoryToggleButton.onClick.AddListener(Toggle);
+
+        inventoryToggleCaption = CreateText(toggleObject.transform, "Caption", "Открыть инвентарь", 12,
+            FontStyle.Bold, new Color(0.88f, 0.81f, 0.68f, 1f), new Vector2(176f, 44f), Vector2.zero);
+    }
+
+    private void RefreshInventoryToggleCaption()
+    {
+        if (inventoryToggleCaption != null)
+        {
+            inventoryToggleCaption.text = IsOpen ? "Закрыть инвентарь" : "Открыть инвентарь";
+        }
     }
 
     private void BuildPaperDoll(Transform parent)
