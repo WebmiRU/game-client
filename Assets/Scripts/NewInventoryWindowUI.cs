@@ -525,70 +525,71 @@ public sealed class NewInventoryWindowUI : MonoBehaviour
 
     private static Texture2D CreateSoulshotInventoryIcon()
     {
-        const int size = 64;
+        const int size = 128;
         Color32[] pixels = new Color32[size * size];
 
         for (int y = 0; y < size; y++)
         {
             float py = ((y + 0.5f) / size) * 2f - 1f;
+            float ay = Mathf.Abs(py);
+
             for (int x = 0; x < size; x++)
             {
                 float px = ((x + 0.5f) / size) * 2f - 1f;
-                float dx = Mathf.Max(0f, Mathf.Abs(px) - 0.40f);
-                float distance = Mathf.Sqrt(dx * dx + py * py);
+                float ax = Mathf.Abs(px);
                 int index = y * size + x;
+                float outerHalfWidth = SoulshotIconOuterHalfWidth(ax);
 
-                if (distance >= 0.315f)
+                float verticalAlpha = Mathf.Clamp01((outerHalfWidth - ay) / 0.018f);
+                float axialAlpha = Mathf.Clamp01((0.835f - ax) / 0.018f);
+                float alpha = Mathf.Min(verticalAlpha, axialAlpha);
+                if (alpha <= 0.001f)
                 {
                     pixels[index] = new Color32(0, 0, 0, 0);
                     continue;
                 }
 
-                float edge = Mathf.Clamp01((0.315f - distance) / 0.022f);
-                float broadReflection = Mathf.Exp(-0.5f * Mathf.Pow((py + 0.10f) / 0.36f, 2f));
-                float narrowReflection = Mathf.Exp(-0.5f * Mathf.Pow((py + 0.17f) / 0.085f, 2f));
-                float darkReflection = Mathf.Exp(-0.5f * Mathf.Pow(py / 0.095f, 2f));
+                Color color = SoulshotIconMetalColor(ax, py);
 
-                Color color = new Color(0.004f, 0.070f, 0.24f, edge);
-                color = Color.Lerp(color, new Color(0.008f, 0.26f, 0.62f, edge), broadReflection * 0.8f);
-                color = Color.Lerp(color, new Color(0.02f, 0.48f, 0.85f, edge), narrowReflection * 0.55f);
-                color = Color.Lerp(color, new Color(0.001f, 0.025f, 0.105f, edge), darkReflection * 0.52f);
-                color = Color.Lerp(color, new Color(0.28f, 0.62f, 0.96f, edge), narrowReflection * 0.22f);
-
-                // Fine silver diamond mesh around the glossy blue core, matching the 3D model.
-                if (Mathf.Abs(px) < 0.365f && Mathf.Abs(py) < 0.29f)
+                // The central insert is a vivid faceted blue crystal. It tapers to
+                // pointed ends under the metal collars rather than forming a rounded pill.
+                float crystalHalfWidth = SoulshotIconCrystalHalfWidth(ax);
+                bool insideCrystal = crystalHalfWidth > 0f && ay < crystalHalfWidth;
+                if (insideCrystal)
                 {
-                    float phaseA = Mathf.Repeat(px * 7f + py * 9f + 0.5f, 1f);
-                    float phaseB = Mathf.Repeat(px * 7f - py * 9f + 0.5f, 1f);
-                    float distA = Mathf.Min(phaseA, 1f - phaseA);
-                    float distB = Mathf.Min(phaseB, 1f - phaseB);
-                    float lineDistance = Mathf.Min(distA, distB);
-
-                    if (lineDistance < 0.085f)
+                    color = SoulshotIconCrystalColor(ax, py, crystalHalfWidth);
+                }
+                else
+                {
+                    // Narrow raised bronze ribs where the forged collars meet the crystal.
+                    if (Mathf.Abs(ax - 0.425f) < 0.014f ||
+                        Mathf.Abs(ax - 0.475f) < 0.012f)
                     {
-                        float wire = 1f - Mathf.InverseLerp(0.025f, 0.085f, lineDistance);
-                        Color wireShadow = new Color(0.075f, 0.13f, 0.23f, edge);
-                        Color wireSilver = new Color(0.42f, 0.56f, 0.74f, edge);
-                        Color wireHighlight = new Color(0.78f, 0.87f, 0.97f, edge);
-                        color = Color.Lerp(color, wireShadow, wire * 0.28f);
-                        color = Color.Lerp(color, wireSilver, wire * 0.88f);
+                        color = Color.Lerp(color, new Color(0.68f, 0.53f, 0.33f, 1f), 0.76f);
+                    }
 
-                        if (lineDistance < 0.028f)
+                    // Small engraved diamond on each end cap, with a blue inset gem.
+                    float diamond = Mathf.Abs(ax - 0.625f) / 0.043f + ay / 0.067f;
+                    if (diamond < 1.05f)
+                    {
+                        color = diamond > 0.78f
+                            ? new Color(0.68f, 0.54f, 0.34f, 1f)
+                            : new Color(0.035f, 0.030f, 0.024f, 1f);
+                        if (diamond < 0.30f)
                         {
-                            float core = 1f - Mathf.InverseLerp(0.008f, 0.028f, lineDistance);
-                            color = Color.Lerp(color, wireHighlight, core * 0.72f);
+                            color = new Color(0.10f, 0.50f, 1.00f, 1f);
                         }
                     }
                 }
 
-                // Thin silver seams separate the woven section from the smooth rounded ends.
-                bool collar = Mathf.Abs(Mathf.Abs(px) - 0.395f) < 0.025f && Mathf.Abs(py) < 0.25f;
-                if (collar)
+                // Keep a dark forged-metal contour; anti-alias the transparent edge.
+                float edge = Mathf.Clamp01((outerHalfWidth - ay) / 0.035f);
+                if (edge < 0.72f)
                 {
-                    float silver = 0.64f + 0.11f * Mathf.Clamp01(narrowReflection);
-                    color = new Color(silver * 0.92f, silver * 0.96f, silver, edge);
+                    color = Color.Lerp(new Color(0.018f, 0.016f, 0.014f, 1f), color, edge / 0.72f);
                 }
 
+                color.a = alpha;
                 pixels[index] = new Color32(
                     (byte)Mathf.Clamp(Mathf.RoundToInt(color.r * 255f), 0, 255),
                     (byte)Mathf.Clamp(Mathf.RoundToInt(color.g * 255f), 0, 255),
@@ -599,7 +600,7 @@ public sealed class NewInventoryWindowUI : MonoBehaviour
 
         Texture2D texture = new Texture2D(size, size, TextureFormat.RGBA32, false)
         {
-            name = "InventorySoulshotGlossyPepsiBlueIcon",
+            name = "InventorySoulshotFacetedBlueCrystalIcon",
             hideFlags = HideFlags.HideAndDontSave,
             filterMode = FilterMode.Bilinear,
             wrapMode = TextureWrapMode.Clamp
@@ -607,6 +608,82 @@ public sealed class NewInventoryWindowUI : MonoBehaviour
         texture.SetPixels32(pixels);
         texture.Apply(false, true);
         return texture;
+    }
+
+    private static float SoulshotIconOuterHalfWidth(float absX)
+    {
+        if (absX < 0.34f) return 0.198f;
+        if (absX < 0.42f) return Mathf.Lerp(0.198f, 0.238f, (absX - 0.34f) / 0.08f);
+        if (absX < 0.50f) return Mathf.Lerp(0.238f, 0.258f, (absX - 0.42f) / 0.08f);
+        if (absX < 0.57f) return Mathf.Lerp(0.258f, 0.244f, (absX - 0.50f) / 0.07f);
+        if (absX < 0.65f) return Mathf.Lerp(0.244f, 0.206f, (absX - 0.57f) / 0.08f);
+        if (absX < 0.73f) return Mathf.Lerp(0.206f, 0.133f, (absX - 0.65f) / 0.08f);
+        if (absX < 0.82f) return Mathf.Lerp(0.133f, 0.004f, (absX - 0.73f) / 0.09f);
+        return 0f;
+    }
+
+    private static float SoulshotIconCrystalHalfWidth(float absX)
+    {
+        if (absX < 0.29f) return 0.158f;
+        if (absX < 0.435f) return Mathf.Lerp(0.158f, 0.010f, (absX - 0.29f) / 0.145f);
+        return 0f;
+    }
+
+    private static Color SoulshotIconMetalColor(float absX, float y)
+    {
+        float upperHighlight = Mathf.Exp(-0.5f * Mathf.Pow((y + 0.045f) / 0.060f, 2f));
+        float lowerShade = Mathf.Exp(-0.5f * Mathf.Pow((y - 0.095f) / 0.080f, 2f));
+        float sideShade = Mathf.Clamp01(absX / 0.84f);
+
+        Color darkBronze = new Color(0.045f, 0.038f, 0.029f, 1f);
+        Color midBronze = new Color(0.235f, 0.177f, 0.112f, 1f);
+        Color warmHighlight = new Color(0.57f, 0.445f, 0.275f, 1f);
+        Color color = Color.Lerp(darkBronze, midBronze, 0.64f - sideShade * 0.12f);
+        color = Color.Lerp(color, warmHighlight, upperHighlight * 0.56f);
+        color = Color.Lerp(color, darkBronze, lowerShade * 0.48f);
+
+        // The narrow end cap tips are darker, while the broad forged shoulders catch light.
+        if (absX > 0.70f)
+        {
+            color = Color.Lerp(color, darkBronze, Mathf.InverseLerp(0.70f, 0.82f, absX) * 0.56f);
+        }
+        return color;
+    }
+
+    private static Color SoulshotIconCrystalColor(float absX, float y, float crystalHalfWidth)
+    {
+        float broadReflection = Mathf.Exp(-0.5f * Mathf.Pow((y + 0.045f) / 0.075f, 2f));
+        float shade = Mathf.Clamp01((y / Mathf.Max(0.001f, crystalHalfWidth) + 1f) * 0.5f);
+        Color deepBlue = new Color(0.005f, 0.022f, 0.105f, 1f);
+        Color royalBlue = new Color(0.012f, 0.19f, 0.63f, 1f);
+        Color brightBlue = new Color(0.035f, 0.39f, 0.91f, 1f);
+        Color paleGlint = new Color(0.30f, 0.72f, 1.00f, 1f);
+
+        Color color = Color.Lerp(deepBlue, royalBlue, 0.46f + broadReflection * 0.45f);
+        color = Color.Lerp(color, brightBlue, broadReflection * 0.38f);
+        if (shade > 0.68f)
+        {
+            color = Color.Lerp(color, deepBlue, (shade - 0.68f) * 1.6f);
+        }
+
+        // Angular light seams suggest large cut crystal facets, not scratches or wire mesh.
+        float firstFacet = Mathf.Abs(y - (-0.105f + absX * 0.30f));
+        float secondFacet = Mathf.Abs(y - (0.092f - absX * 0.20f));
+        if (firstFacet < 0.021f)
+        {
+            float glint = 1f - firstFacet / 0.021f;
+            color = Color.Lerp(color, paleGlint, glint * 0.88f);
+        }
+        else if (secondFacet < 0.014f)
+        {
+            float glint = 1f - secondFacet / 0.014f;
+            color = Color.Lerp(color, brightBlue, glint * 0.85f);
+        }
+
+        // The crystal narrows near the collars; deepen the color near the pointed ends.
+        float tipShade = Mathf.InverseLerp(0.27f, 0.435f, absX);
+        color = Color.Lerp(color, deepBlue, tipShade * 0.50f);
+        return color;
     }
 
     private static Texture2D CreateGenericInventoryIcon()
