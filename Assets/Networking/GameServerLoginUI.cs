@@ -229,6 +229,12 @@ public sealed class GameServerLoginUI : MonoBehaviour
     private int _playerHealth = 100;
     private int _playerMaxHealth = 100;
 
+    private GUIStyle _inventoryHudButtonStyle;
+    private Texture2D _inventoryHudBorderTexture;
+    private Texture2D _inventoryHudBackgroundTexture;
+    private Texture2D _inventoryHudHoverTexture;
+    private Texture2D _inventoryHudPressedTexture;
+
     private TcpClient _client;
     private NetworkStream _stream;
     private StreamReader _reader;
@@ -317,6 +323,10 @@ public sealed class GameServerLoginUI : MonoBehaviour
     private void OnDestroy()
     {
         DisconnectFromServer(false);
+        if (_inventoryHudBorderTexture != null) Destroy(_inventoryHudBorderTexture);
+        if (_inventoryHudBackgroundTexture != null) Destroy(_inventoryHudBackgroundTexture);
+        if (_inventoryHudHoverTexture != null) Destroy(_inventoryHudHoverTexture);
+        if (_inventoryHudPressedTexture != null) Destroy(_inventoryHudPressedTexture);
         foreach (Material material in _monsterMaterials.Values)
         {
             if (material != null)
@@ -427,6 +437,84 @@ public sealed class GameServerLoginUI : MonoBehaviour
 
         GUILayout.EndVertical();
         GUILayout.EndArea();
+
+        DrawInventoryToggle();
+    }
+
+    private void DrawInventoryToggle()
+    {
+        EnsureInventoryHudButtonStyle();
+
+        float scale = Mathf.Clamp(Screen.width / 1920f, 0.8f, 1.5f);
+        float width = 370f * scale;
+        float height = 76f * scale;
+        float margin = 22f * scale;
+        Rect rect = new Rect(
+            Screen.width - width - margin,
+            Screen.height - height - margin,
+            width,
+            height);
+
+        GUI.DrawTexture(rect, _inventoryHudBorderTexture, ScaleMode.StretchToFill);
+        float border = 2f * scale;
+        Rect buttonRect = new Rect(
+            rect.x + border,
+            rect.y + border,
+            rect.width - border * 2f,
+            rect.height - border * 2f);
+
+        string caption = InventoryWindowUI.IsOpen
+            ? "ЗАКРЫТЬ ИНВЕНТАРЬ  [I]"
+            : "ОТКРЫТЬ ИНВЕНТАРЬ  [I]";
+
+        if (GUI.Button(buttonRect, caption, _inventoryHudButtonStyle))
+        {
+            InventoryWindowUI.ToggleFromHUD();
+        }
+    }
+
+    private void EnsureInventoryHudButtonStyle()
+    {
+        if (_inventoryHudButtonStyle != null) return;
+
+        _inventoryHudBorderTexture = CreateSolidHudTexture(
+            new Color(0.76f, 0.59f, 0.30f, 1f), "InventoryHudBorder");
+        _inventoryHudBackgroundTexture = CreateSolidHudTexture(
+            new Color(0.075f, 0.062f, 0.045f, 0.98f), "InventoryHudBackground");
+        _inventoryHudHoverTexture = CreateSolidHudTexture(
+            new Color(0.22f, 0.17f, 0.095f, 1f), "InventoryHudHover");
+        _inventoryHudPressedTexture = CreateSolidHudTexture(
+            new Color(0.035f, 0.03f, 0.022f, 1f), "InventoryHudPressed");
+
+        _inventoryHudButtonStyle = new GUIStyle(GUI.skin.button);
+        _inventoryHudButtonStyle.alignment = TextAnchor.MiddleCenter;
+        _inventoryHudButtonStyle.fontStyle = FontStyle.Bold;
+        _inventoryHudButtonStyle.fontSize = Mathf.RoundToInt(18f * Mathf.Clamp(Screen.width / 1920f, 0.8f, 1.5f));
+        _inventoryHudButtonStyle.wordWrap = false;
+        _inventoryHudButtonStyle.clipping = TextClipping.Clip;
+        _inventoryHudButtonStyle.padding = new RectOffset(8, 8, 4, 4);
+        _inventoryHudButtonStyle.normal.background = _inventoryHudBackgroundTexture;
+        _inventoryHudButtonStyle.normal.textColor = new Color(1f, 0.88f, 0.63f, 1f);
+        _inventoryHudButtonStyle.hover.background = _inventoryHudHoverTexture;
+        _inventoryHudButtonStyle.hover.textColor = Color.white;
+        _inventoryHudButtonStyle.active.background = _inventoryHudPressedTexture;
+        _inventoryHudButtonStyle.active.textColor = Color.white;
+        _inventoryHudButtonStyle.focused.background = _inventoryHudBackgroundTexture;
+        _inventoryHudButtonStyle.focused.textColor = new Color(1f, 0.88f, 0.63f, 1f);
+    }
+
+    private static Texture2D CreateSolidHudTexture(Color color, string textureName)
+    {
+        Texture2D texture = new Texture2D(1, 1, TextureFormat.RGBA32, false)
+        {
+            name = textureName,
+            hideFlags = HideFlags.HideAndDontSave,
+            filterMode = FilterMode.Point,
+            wrapMode = TextureWrapMode.Clamp
+        };
+        texture.SetPixel(0, 0, color);
+        texture.Apply(false, true);
+        return texture;
     }
 
     private async void ConnectToServerAsync()
@@ -1737,17 +1825,23 @@ public sealed class GameServerLoginUI : MonoBehaviour
             }
 
             const float itemSize = 0.35f;
-            // Ground-item positions are server-authoritative. Do not overwrite the server's Y
-            // with a local Terrain sample: mismatched Terrain transforms can bury small models.
+            // The server heightmap and Unity Terrain may differ slightly. For rendering,
+            // use the surface actually visible in the client whenever it is available.
             float baseY = item.position.y;
+            if (isSoulshot && TryGetTerrainSurfaceY(item.position.x, item.position.z, out float localGroundY))
+            {
+                baseY = localGroundY;
+            }
 
             Vector3 restingPosition;
             if (isSoulshot)
             {
                 view.transform.localScale = Vector3.one;
-                // The horizontal braid reaches about 0.265 world units from the centre.
-                // Keep an additional 3.5 cm clearance so the metal does not clip into the ground.
-                restingPosition = new Vector3(item.position.x, baseY + 0.30f, item.position.z);
+                // Put the capsule's bottom at the terrain surface plus a small safety clearance.
+                restingPosition = new Vector3(
+                    item.position.x,
+                    baseY + SoulshotVisual.GroundCenterOffset,
+                    item.position.z);
                 view.transform.rotation = Quaternion.Euler(0f, 0f, 90f);
             }
             else
@@ -1805,15 +1899,17 @@ public sealed class GameServerLoginUI : MonoBehaviour
     private bool TryGetTerrainSurfaceY(float worldX, float worldZ, out float surfaceY)
     {
         surfaceY = 0f;
-        if (_worldTerrain == null || _worldTerrain.terrainData == null)
+
+        if (_worldTerrain == null || !TerrainCoversPosition(_worldTerrain, worldX, worldZ))
         {
-            _worldTerrain = Terrain.activeTerrain;
-            if (_worldTerrain == null)
+            _worldTerrain = null;
+            Terrain[] terrains = FindObjectsByType<Terrain>(FindObjectsSortMode.None);
+            foreach (Terrain candidate in terrains)
             {
-                Terrain[] terrains = FindObjectsByType<Terrain>(FindObjectsSortMode.None);
-                if (terrains.Length > 0)
+                if (TerrainCoversPosition(candidate, worldX, worldZ))
                 {
-                    _worldTerrain = terrains[0];
+                    _worldTerrain = candidate;
+                    break;
                 }
             }
         }
@@ -1823,26 +1919,45 @@ public sealed class GameServerLoginUI : MonoBehaviour
             return false;
         }
 
+        TerrainCollider terrainCollider = _worldTerrain.GetComponent<TerrainCollider>();
+        if (terrainCollider != null && terrainCollider.enabled)
+        {
+            Bounds bounds = terrainCollider.bounds;
+            Ray ray = new Ray(new Vector3(worldX, bounds.max.y + 10f, worldZ), Vector3.down);
+            if (terrainCollider.Raycast(ray, out RaycastHit hit, bounds.size.y + 20f))
+            {
+                surfaceY = hit.point.y;
+                return true;
+            }
+        }
+
+        // Fallback for scenes where TerrainCollider is missing or disabled.
         TerrainData data = _worldTerrain.terrainData;
         Vector3 origin = _worldTerrain.transform.position;
         Vector3 scale = _worldTerrain.transform.lossyScale;
         float width = data.size.x * Mathf.Abs(scale.x);
         float length = data.size.z * Mathf.Abs(scale.z);
-        if (width <= 0f || length <= 0f)
-        {
-            return false;
-        }
+        if (width <= 0f || length <= 0f) return false;
 
         float normalizedX = (worldX - origin.x) / width;
         float normalizedZ = (worldZ - origin.z) / length;
         if (normalizedX < 0f || normalizedX > 1f || normalizedZ < 0f || normalizedZ > 1f)
-        {
             return false;
-        }
 
         surfaceY = origin.y +
             data.GetInterpolatedHeight(normalizedX, normalizedZ) * Mathf.Abs(scale.y);
         return true;
+    }
+
+    private static bool TerrainCoversPosition(Terrain terrain, float worldX, float worldZ)
+    {
+        if (terrain == null || terrain.terrainData == null) return false;
+        Vector3 origin = terrain.transform.position;
+        Vector3 scale = terrain.transform.lossyScale;
+        float width = terrain.terrainData.size.x * Mathf.Abs(scale.x);
+        float length = terrain.terrainData.size.z * Mathf.Abs(scale.z);
+        return worldX >= origin.x && worldX <= origin.x + width &&
+            worldZ >= origin.z && worldZ <= origin.z + length;
     }
 
     private void LateUpdate()
