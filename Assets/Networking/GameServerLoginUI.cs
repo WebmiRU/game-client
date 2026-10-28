@@ -1743,7 +1743,7 @@ public sealed class GameServerLoginUI : MonoBehaviour
             {
                 view.transform.localScale = Vector3.one;
                 view.transform.position = new Vector3(item.position.x, baseY + 0.30f, item.position.z);
-                view.transform.rotation = Quaternion.Euler(0f, 0f, 80f);
+                view.transform.rotation = Quaternion.Euler(0f, 0f, 90f);
             }
             else
             {
