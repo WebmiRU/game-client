@@ -150,7 +150,10 @@ public sealed class InventoryWindowUI : MonoBehaviour
     {
         IsOpen = open;
         _draggingWindow = false;
-        if (window != null) window.SetActive(open);
+        // The Canvas objects are retained only as data sources for the character preview.
+        // Activating this legacy panel draws a second inventory over the IMGUI frame,
+        // making the updated ornate frame appear to have no effect.
+        if (window != null && window.activeSelf) window.SetActive(false);
         if (previewCamera != null) previewCamera.enabled = open;
         if (open)
         {
