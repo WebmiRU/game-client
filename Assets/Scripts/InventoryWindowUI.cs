@@ -75,10 +75,6 @@ public sealed class InventoryWindowUI : MonoBehaviour
             Destroy(previewTexture);
         }
         DestroyPreviewResources();
-        if (hudButtonBackground != null) Destroy(hudButtonBackground);
-        if (hudButtonHover != null) Destroy(hudButtonHover);
-        if (hudButtonPressed != null) Destroy(hudButtonPressed);
-        if (hudButtonBorder != null) Destroy(hudButtonBorder);
     }
 
     /// <summary>Entry point used by the always-visible server HUD.</summary>
@@ -185,71 +181,6 @@ public sealed class InventoryWindowUI : MonoBehaviour
         BuildItemGrid(interior.transform);
     }
 
-    private GUIStyle hudToggleStyle;
-    private Texture2D hudButtonBackground;
-    private Texture2D hudButtonHover;
-    private Texture2D hudButtonPressed;
-    private Texture2D hudButtonBorder;
-
-    private void OnGUI()
-    {
-        // IMGUI is rendered independently of the screen-space Canvas and EventSystem,
-        // so the open-inventory control remains visible even if a UI module/canvas is misconfigured.
-        EnsureHudToggleStyle();
-
-        float scale = Mathf.Clamp(Screen.width / 1920f, 0.75f, 2f);
-        float width = 318f * scale;
-        float height = 70f * scale;
-        float margin = 22f * scale;
-        Rect rect = new Rect(Screen.width - width - margin, Screen.height - height - margin, width, height);
-        float border = 2f * scale;
-
-        GUI.DrawTexture(new Rect(rect.x, rect.y, rect.width, rect.height), hudButtonBorder, ScaleMode.StretchToFill);
-        Rect inner = new Rect(rect.x + border, rect.y + border, rect.width - border * 2f, rect.height - border * 2f);
-        string caption = IsOpen ? "ЗАКРЫТЬ ИНВЕНТАРЬ  [I]" : "ОТКРЫТЬ ИНВЕНТАРЬ  [I]";
-        if (GUI.Button(inner, caption, hudToggleStyle))
-        {
-            Toggle();
-        }
-    }
-
-    private void EnsureHudToggleStyle()
-    {
-        if (hudToggleStyle != null) return;
-
-        hudButtonBackground = CreateHudTexture(new Color(0.075f, 0.062f, 0.045f, 0.98f));
-        hudButtonHover = CreateHudTexture(new Color(0.22f, 0.17f, 0.095f, 1f));
-        hudButtonPressed = CreateHudTexture(new Color(0.035f, 0.03f, 0.022f, 1f));
-        hudButtonBorder = CreateHudTexture(new Color(0.76f, 0.59f, 0.30f, 1f));
-
-        hudToggleStyle = new GUIStyle(GUI.skin.button)
-        {
-            alignment = TextAnchor.MiddleCenter,
-            fontStyle = FontStyle.Bold,
-            fontSize = 17,
-            wordWrap = false,
-            clipping = TextClipping.Clip,
-            padding = new RectOffset(8, 8, 4, 4),
-            normal = { background = hudButtonBackground, textColor = new Color(1f, 0.88f, 0.63f, 1f) },
-            hover = { background = hudButtonHover, textColor = Color.white },
-            active = { background = hudButtonPressed, textColor = Color.white },
-            focused = { background = hudButtonBackground, textColor = new Color(1f, 0.88f, 0.63f, 1f) }
-        };
-    }
-
-    private static Texture2D CreateHudTexture(Color color)
-    {
-        Texture2D texture = new Texture2D(1, 1, TextureFormat.RGBA32, false)
-        {
-            name = "InventoryHudButtonTexture",
-            hideFlags = HideFlags.HideAndDontSave,
-            filterMode = FilterMode.Point,
-            wrapMode = TextureWrapMode.Clamp
-        };
-        texture.SetPixel(0, 0, color);
-        texture.Apply(false, true);
-        return texture;
-    }
 
     private void BuildPaperDoll(Transform parent)
     {
