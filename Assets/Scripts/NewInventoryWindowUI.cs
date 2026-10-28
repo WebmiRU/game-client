@@ -11,6 +11,13 @@ public sealed class NewInventoryWindowUI : MonoBehaviour
     private const int TextureWidth = 1600;
     private const int TextureHeight = 900;
 
+    private static readonly Color32 FrameShadow = new Color32(16, 12, 9, 250);
+    private static readonly Color32 FrameIron = new Color32(48, 43, 36, 255);
+    private static readonly Color32 FrameBronze = new Color32(105, 77, 43, 255);
+    private static readonly Color32 FrameGold = new Color32(177, 133, 69, 255);
+    private static readonly Color32 FrameGlint = new Color32(225, 187, 120, 240);
+    private static readonly Color32 FrameDarkInset = new Color32(24, 21, 18, 255);
+
     public static bool IsOpen { get; private set; }
 
     private static NewInventoryWindowUI _instance;
@@ -135,20 +142,15 @@ public sealed class NewInventoryWindowUI : MonoBehaviour
         Color32 transparent = new Color32(0, 0, 0, 0);
         for (int i = 0; i < pixels.Length; i++) pixels[i] = transparent;
 
-        Color32 shadow = new Color32(16, 12, 9, 250);
-        Color32 iron = new Color32(48, 43, 36, 255);
-        Color32 bronze = new Color32(105, 77, 43, 255);
-        Color32 gold = new Color32(177, 133, 69, 255);
-        Color32 glint = new Color32(225, 187, 120, 240);
-        Color32 darkInset = new Color32(24, 21, 18, 255);
+
 
         // Beveled double rails. The centre remains fully transparent.
-        DrawRectOutline(pixels, width, height, 17, 12, shadow, 12);
-        DrawRectOutline(pixels, width, height, 23, 18, bronze, 5);
-        DrawRectOutline(pixels, width, height, 30, 25, iron, 7);
-        DrawRectOutline(pixels, width, height, 35, 30, gold, 2);
-        DrawRectOutline(pixels, width, height, 42, 37, darkInset, 3);
-        DrawRectOutline(pixels, width, height, 47, 42, glint, 1);
+        DrawRectOutline(pixels, width, height, 17, 12, FrameShadow, 12);
+        DrawRectOutline(pixels, width, height, 23, 18, FrameBronze, 5);
+        DrawRectOutline(pixels, width, height, 30, 25, FrameIron, 7);
+        DrawRectOutline(pixels, width, height, 35, 30, FrameGold, 2);
+        DrawRectOutline(pixels, width, height, 42, 37, FrameDarkInset, 3);
+        DrawRectOutline(pixels, width, height, 47, 42, FrameGlint, 1);
 
         // Ornamental corners are mirrored into all four corners.
         DrawCorner(pixels, width, height, 54, 54, 1, 1);
@@ -161,10 +163,10 @@ public sealed class NewInventoryWindowUI : MonoBehaviour
         DrawCentralCrest(pixels, width, height, width / 2, 34, -1);
 
         // Small diamond studs along the side rails.
-        DrawDiamond(pixels, width, height, 34, height / 2, 15, bronze, 5);
-        DrawDiamond(pixels, width, height, width - 34, height / 2, 15, bronze, 5);
-        DrawDiamond(pixels, width, height, 34, height / 2, 8, glint, 2);
-        DrawDiamond(pixels, width, height, width - 34, height / 2, 8, glint, 2);
+        DrawDiamond(pixels, width, height, 34, height / 2, 15, FrameBronze, 5);
+        DrawDiamond(pixels, width, height, width - 34, height / 2, 15, FrameBronze, 5);
+        DrawDiamond(pixels, width, height, 34, height / 2, 8, FrameGlint, 2);
+        DrawDiamond(pixels, width, height, width - 34, height / 2, 8, FrameGlint, 2);
 
         Texture2D texture = new Texture2D(width, height, TextureFormat.RGBA32, false)
         {
@@ -194,34 +196,34 @@ public sealed class NewInventoryWindowUI : MonoBehaviour
 
         foreach (Vector2[] curve in curves)
         {
-            DrawBezier(pixels, width, height, curve, shadow, 18);
-            DrawBezier(pixels, width, height, curve, bronze, 10);
-            DrawBezier(pixels, width, height, curve, gold, 4);
-            DrawBezier(pixels, width, height, curve, glint, 1);
+            DrawBezier(pixels, width, height, curve, FrameShadow, 18);
+            DrawBezier(pixels, width, height, curve, FrameBronze, 10);
+            DrawBezier(pixels, width, height, curve, FrameGold, 4);
+            DrawBezier(pixels, width, height, curve, FrameGlint, 1);
         }
 
         Vector2 stud = P(83, 75);
-        DrawDiamond(pixels, width, height, Mathf.RoundToInt(stud.x), Mathf.RoundToInt(stud.y), 20, shadow, 7);
-        DrawDiamond(pixels, width, height, Mathf.RoundToInt(stud.x), Mathf.RoundToInt(stud.y), 13, gold, 3);
-        DrawDiamond(pixels, width, height, Mathf.RoundToInt(stud.x), Mathf.RoundToInt(stud.y), 6, glint, 2);
+        DrawDiamond(pixels, width, height, Mathf.RoundToInt(stud.x), Mathf.RoundToInt(stud.y), 20, FrameShadow, 7);
+        DrawDiamond(pixels, width, height, Mathf.RoundToInt(stud.x), Mathf.RoundToInt(stud.y), 13, FrameGold, 3);
+        DrawDiamond(pixels, width, height, Mathf.RoundToInt(stud.x), Mathf.RoundToInt(stud.y), 6, FrameGlint, 2);
     }
 
     private static void DrawCentralCrest(Color32[] pixels, int width, int height, int centerX, int railY, int inwardY)
     {
         int cy = railY - inwardY * 15;
-        DrawDiamond(pixels, width, height, centerX, cy, 72, shadow, 18);
-        DrawDiamond(pixels, width, height, centerX, cy, 58, bronze, 11);
-        DrawDiamond(pixels, width, height, centerX, cy, 43, gold, 6);
-        DrawDiamond(pixels, width, height, centerX, cy, 28, darkInset, 5);
-        DrawDiamond(pixels, width, height, centerX, cy, 15, glint, 3);
+        DrawDiamond(pixels, width, height, centerX, cy, 72, FrameShadow, 18);
+        DrawDiamond(pixels, width, height, centerX, cy, 58, FrameBronze, 11);
+        DrawDiamond(pixels, width, height, centerX, cy, 43, FrameGold, 6);
+        DrawDiamond(pixels, width, height, centerX, cy, 28, FrameDarkInset, 5);
+        DrawDiamond(pixels, width, height, centerX, cy, 15, FrameGlint, 3);
 
         Vector2 left = new Vector2(centerX - 110, railY - inwardY * 7);
         Vector2 right = new Vector2(centerX + 110, railY - inwardY * 7);
         Vector2 top = new Vector2(centerX, railY + inwardY * 30);
-        DrawLine(pixels, width, height, left, top, shadow, 15);
-        DrawLine(pixels, width, height, top, right, shadow, 15);
-        DrawLine(pixels, width, height, left, top, gold, 4);
-        DrawLine(pixels, width, height, top, right, gold, 4);
+        DrawLine(pixels, width, height, left, top, FrameShadow, 15);
+        DrawLine(pixels, width, height, top, right, FrameShadow, 15);
+        DrawLine(pixels, width, height, left, top, FrameGold, 4);
+        DrawLine(pixels, width, height, top, right, FrameGold, 4);
     }
 
     private static void DrawRectOutline(Color32[] pixels, int width, int height,
