@@ -625,6 +625,7 @@ public class PlayerController : MonoBehaviour
         if (wasEnabled)
         {
             characterController.enabled = true;
+            ReapplyGroundItemCollisionIgnores();
         }
 
         Physics.SyncTransforms();
@@ -716,6 +717,7 @@ public class PlayerController : MonoBehaviour
         if (wasEnabled)
         {
             characterController.enabled = true;
+            ReapplyGroundItemCollisionIgnores();
         }
 
         // The server may restore a different facing direction than the scene default.
@@ -822,6 +824,7 @@ public class PlayerController : MonoBehaviour
         if (wasEnabled)
         {
             characterController.enabled = true;
+            ReapplyGroundItemCollisionIgnores();
         }
 
         _verticalVelocity = 0f;
@@ -882,6 +885,7 @@ public class PlayerController : MonoBehaviour
         if (wasEnabled)
         {
             characterController.enabled = true;
+            ReapplyGroundItemCollisionIgnores();
         }
 
         _verticalVelocity = 0f;
@@ -1034,6 +1038,21 @@ public class PlayerController : MonoBehaviour
 
         characterController.Move(movement * Time.deltaTime);
         SyncNetworkStateIfNeeded();
+    }
+
+    private void ReapplyGroundItemCollisionIgnores()
+    {
+        if (characterController == null || !characterController.enabled)
+        {
+            return;
+        }
+
+        GameServerLoginUI login = GameServerLoginUI.Instance;
+        if (login != null)
+        {
+            // Unity can reset IgnoreCollision pairs when a collider is disabled then re-enabled.
+            login.IgnoreGroundItemCollisionsForActor(characterController);
+        }
     }
 
     public void CancelGroundItemMovement(string itemID)
