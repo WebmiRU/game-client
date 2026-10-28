@@ -2023,6 +2023,15 @@ public sealed class GameServerLoginUI : MonoBehaviour
             _groundItemViews.Remove(itemID);
         }
 
+        if (_cachedPlayerController == null)
+        {
+            _cachedPlayerController = FindFirstObjectByType<PlayerController>();
+        }
+        if (_cachedPlayerController != null)
+        {
+            _cachedPlayerController.CancelGroundItemMovement(itemID);
+        }
+
         if (_selectedTargetType == "item" &&
             string.Equals(_selectedTargetID, itemID, StringComparison.Ordinal))
         {
@@ -2257,6 +2266,45 @@ public sealed class GameServerLoginUI : MonoBehaviour
         {
             Debug.LogWarning("GameServer: attack rejected; reason=" + message.message +
                 ", requestId=" + message.requestId);
+        }
+    }
+
+    public void CancelGroundItemPickupIntent()
+    {
+        if (!string.Equals(_selectedTargetType, "item", StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        ApplySelectedTarget(null);
+        _hasPendingTargetSelection = true;
+        if (!IsReadyForPlayerState || _writer == null)
+        {
+            _hasPendingTargetSelection = false;
+            return;
+        }
+
+        string json = JsonUtility.ToJson(new TargetRequest
+        {
+            type = "set_target",
+            targetType = string.Empty,
+            targetId = string.Empty
+        });
+
+        SemaphoreSlim signal;
+        bool signalSender;
+        lock (_outgoingLock)
+        {
+            signalSender = string.IsNullOrEmpty(_latestOutgoingPlayerState) &&
+                string.IsNullOrEmpty(_latestOutgoingWorldInterest) &&
+                string.IsNullOrEmpty(_latestOutgoingTarget);
+            _latestOutgoingTarget = json;
+            signal = _outgoingSignal;
+        }
+
+        if (signalSender)
+        {
+            signal.Release();
         }
     }
 
