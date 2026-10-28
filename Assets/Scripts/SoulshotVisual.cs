@@ -4,7 +4,7 @@ using UnityEngine.Rendering;
 
 /// <summary>
 /// Procedural low-poly model for the blue D-grade Soulshot reference.
-/// The item itself is a glass capsule, blue glass core and metallic diamond braid.
+/// The item is a bright blue metallic capsule with a recessed center section covered by a flush metal braid.
 /// No particles, bloom, aura or billboard glow are created.
 /// </summary>
 [DisallowMultipleComponent]
@@ -28,7 +28,7 @@ public sealed class SoulshotVisual : MonoBehaviour
         modelRoot.transform.SetParent(transform, false);
         modelRoot.transform.localScale = Vector3.one * 0.82f;
 
-        AddPart("DGradeBlueCapsule", coreMesh, coreMaterial, Vector3.zero, false);
+        AddPart("DGradeBlueMetalCapsule", coreMesh, coreMaterial, Vector3.zero, false);
         AddPart("SquareDiamondMetalWeave", braidMesh, silverMaterial, Vector3.zero, true);
         AddPart("LowerMetalCollar", ringMesh, silverMaterial, new Vector3(0f, -0.255f, 0f), true);
         AddPart("UpperMetalCollar", ringMesh, silverMaterial, new Vector3(0f, 0.255f, 0f), true);
@@ -62,24 +62,32 @@ public sealed class SoulshotVisual : MonoBehaviour
     {
         if (built) return;
 
-        // A long opaque capsule avoids the milky translucent shell over the blue glass.
-        coreMesh = BuildCapsule(0.278f, 0.50f, 48, 16, 8);
-        ringMesh = BuildTorus(0.292f, 0.022f, 48, 10);
-        // On the unwrapped cylinder, square cells require the two strand families to cross at 90 degrees.
-        // Using 16 strands keeps several clearly visible square cells along this short metal sleeve.
-        const float braidRadius = 0.311f;
+        // Opaque blue metallic enamel. The body has a recessed central groove so the braid
+        // sits in the groove, with the wire tops level with the capsule's outer radius.
+        const float capsuleRadius = 0.278f;
+        const float grooveRadius = 0.251f;
+        const float grooveHalfLength = 0.275f;
+        const float grooveTransition = 0.04f;
+        coreMesh = BuildCapsule(capsuleRadius, 0.50f, grooveRadius,
+            grooveHalfLength, grooveTransition, 48, 16, 96);
+        ringMesh = BuildTorus(0.260f, 0.018f, 48, 10);
+
+        // Keep every strand inside the body envelope: 0.266 + 0.012 = 0.278.
+        // The braid sits in the recess rather than protruding past the capsule ends.
+        const float braidRadius = 0.266f;
         const float braidHalfLength = 0.248f;
+        const float braidTubeRadius = 0.012f;
         const int braidStrands = 16;
         float squareBraidTurns = braidHalfLength / (Mathf.PI * braidRadius);
         braidMesh = BuildBraid(braidRadius, braidHalfLength, braidStrands,
-            squareBraidTurns, 0.012f, 160, 8);
+            squareBraidTurns, braidTubeRadius, 160, 8);
 
-        coreMaterial = MakeMaterial("Soulshot D Blue Glass", new Color(0.055f, 0.19f, 0.48f, 1f),
-            BuildBlueGlassTexture(), 0.12f, 0.96f, false);
+        coreMaterial = MakeMaterial("Soulshot D Blue Metallic Enamel",
+            new Color(0.72f, 0.90f, 1f, 1f), BuildBlueMetalTexture(), 0.62f, 0.93f, false);
         if (coreMaterial.HasProperty("_EmissionColor"))
         {
-            // A visibly luminous saturated blue surface, not just a point-light stain on the ground.
-            coreMaterial.SetColor("_EmissionColor", new Color(0.035f, 0.28f, 1.6f, 1f));
+            // A restrained blue self-lit component preserves the luminous blue without looking liquid.
+            coreMaterial.SetColor("_EmissionColor", new Color(0.012f, 0.055f, 0.22f, 1f));
             coreMaterial.EnableKeyword("_EMISSION");
         }
         silverMaterial = MakeMaterial("Soulshot Silver Diamond Braid", new Color(0.82f, 0.84f, 0.81f, 1f),
@@ -106,7 +114,7 @@ public sealed class SoulshotVisual : MonoBehaviour
         if (material.HasProperty("_Smoothness")) material.SetFloat("_Smoothness", smoothness);
         if (material.HasProperty("_Glossiness")) material.SetFloat("_Glossiness", smoothness);
 
-        // The reference halo is deliberately omitted; the blue stays inside the glass.
+        // The surface remains opaque; blue emission and lighting provide a subtle metallic glow.
         material.DisableKeyword("_EMISSION");
         if (transparent)
         {
@@ -125,33 +133,44 @@ public sealed class SoulshotVisual : MonoBehaviour
         return material;
     }
 
-    private static Texture2D BuildBlueGlassTexture()
+    private static Texture2D BuildBlueMetalTexture()
     {
         const int size = 128;
         Texture2D texture = new Texture2D(size, size, TextureFormat.RGBA32, true)
         {
-            name = "Soulshot_D_Blue_Glass_Albedo",
+            name = "Soulshot_D_Blue_Metal_Enamel_Albedo",
             wrapMode = TextureWrapMode.Repeat,
             filterMode = FilterMode.Trilinear
         };
         Color32[] pixels = new Color32[size * size];
+
         for (int y = 0; y < size; y++)
         {
             float v = y / (float)(size - 1);
             for (int x = 0; x < size; x++)
             {
                 float u = x / (float)(size - 1);
-                float noise = (Noise(x, y) - 0.5f) * 0.18f;
-                float streak = Mathf.Pow(Mathf.Max(0f, Mathf.Sin(u * Mathf.PI * 14f + 0.8f)), 12f) * 0.3f;
-                float glint = Mathf.Pow(Mathf.Max(0f, Mathf.Sin((u * 1.7f + v * 0.25f) * Mathf.PI * 2f)), 24f) * 0.18f;
-                float edgeShade = 0.68f + 0.32f * Mathf.Sin(v * Mathf.PI);
-                float value = Mathf.Clamp01((0.78f + noise + streak + glint) * edgeShade);
+
+                // Broad polished-aluminium reflections, rather than watery translucent streaks.
+                float broadHighlight = Mathf.Pow(
+                    Mathf.Max(0f, Mathf.Cos((u - 0.22f) * Mathf.PI * 2f)), 10f) * 0.24f;
+                float secondaryHighlight = Mathf.Pow(
+                    Mathf.Max(0f, Mathf.Cos((u + 0.24f) * Mathf.PI * 2f)), 18f) * 0.10f;
+                float fineBrushing = Mathf.Sin(u * Mathf.PI * 2f * 38f + v * 0.35f) * 0.012f;
+                float noise = (Noise(x, y) - 0.5f) * 0.035f;
+                float axialShade = 0.84f + 0.16f * Mathf.Sin(v * Mathf.PI);
+                float value = Mathf.Clamp(
+                    (0.76f + broadHighlight + secondaryHighlight + fineBrushing + noise) * axialShade,
+                    0.42f, 1f);
+
                 pixels[y * size + x] = new Color32(
-                    (byte)Mathf.Clamp(Mathf.RoundToInt(24f * value), 0, 255),
-                    (byte)Mathf.Clamp(Mathf.RoundToInt(82f * value), 0, 255),
-                    (byte)Mathf.Clamp(Mathf.RoundToInt(188f * value), 0, 255), 255);
+                    (byte)Mathf.Clamp(Mathf.RoundToInt(48f * value), 0, 255),
+                    (byte)Mathf.Clamp(Mathf.RoundToInt(145f * value), 0, 255),
+                    (byte)Mathf.Clamp(Mathf.RoundToInt(255f * value), 0, 255),
+                    255);
             }
         }
+
         texture.SetPixels32(pixels);
         texture.Apply(true, false);
         return texture;
@@ -188,7 +207,8 @@ public sealed class SoulshotVisual : MonoBehaviour
         return value - Mathf.Floor(value);
     }
 
-    private static Mesh BuildCapsule(float radius, float halfCylinder, int radial, int hemisphere, int bodySegments)
+    private static Mesh BuildCapsule(float radius, float halfCylinder, float recessedRadius,
+        float recessHalfLength, float transitionWidth, int radial, int hemisphere, int bodySegments)
     {
         List<Vector2> profile = new List<Vector2>();
         for (int i = 1; i <= hemisphere; i++)
@@ -197,7 +217,23 @@ public sealed class SoulshotVisual : MonoBehaviour
             profile.Add(new Vector2(radius * Mathf.Cos(a), -halfCylinder + radius * Mathf.Sin(a)));
         }
         for (int i = 1; i <= bodySegments; i++)
-            profile.Add(new Vector2(radius, Mathf.Lerp(-halfCylinder, halfCylinder, i / (float)bodySegments)));
+        {
+            float y = Mathf.Lerp(-halfCylinder, halfCylinder, i / (float)bodySegments);
+            float distanceFromCenter = Mathf.Abs(y);
+            float localRadius = radius;
+
+            if (distanceFromCenter <= recessHalfLength)
+            {
+                localRadius = recessedRadius;
+            }
+            else if (distanceFromCenter < recessHalfLength + transitionWidth)
+            {
+                float t = (distanceFromCenter - recessHalfLength) / transitionWidth;
+                localRadius = Mathf.Lerp(recessedRadius, radius, Mathf.SmoothStep(0f, 1f, t));
+            }
+
+            profile.Add(new Vector2(localRadius, y));
+        }
         for (int i = 1; i < hemisphere; i++)
         {
             float a = Mathf.PI * 0.5f * i / hemisphere;
