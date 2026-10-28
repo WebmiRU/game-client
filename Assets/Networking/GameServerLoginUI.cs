@@ -1829,8 +1829,17 @@ public sealed class GameServerLoginUI : MonoBehaviour
                 if (isSoulshot)
                 {
                     view = new GameObject("GroundItem_" + item.id);
-                    SphereCollider itemCollider = view.AddComponent<SphereCollider>();
-                    itemCollider.radius = 0.42f;
+
+                    // Match the collision to the visible sideways capsule. The old large
+                    // sphere extended well below ground, so it did not provide reliable
+                    // contact where the actual item is visible.
+                    CapsuleCollider itemCollider = view.AddComponent<CapsuleCollider>();
+                    itemCollider.direction = 1; // local Y; parent rotation turns it horizontal
+                    itemCollider.radius = SoulshotVisual.CollisionRadius;
+                    itemCollider.height = SoulshotVisual.CollisionHeight;
+                    itemCollider.center = Vector3.zero;
+                    itemCollider.isTrigger = false;
+
                     view.AddComponent<SoulshotVisual>().Configure(item.itemTemplate);
                 }
                 else
