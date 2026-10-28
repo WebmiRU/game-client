@@ -201,7 +201,7 @@ public sealed class SoulshotVisual : MonoBehaviour
                 if (collarDistance < collarHalfWidth / fullLength)
                 {
                     float collarShine = 1f - collarDistance / (collarHalfWidth / fullLength);
-                    float brushed = 0.84f + 0.12f * shine + 0.04f * Mathf.Sin(u * 180f);
+                    float brushed = 0.84f + 0.12f * shine + 0.04f * Mathf.Sin(u * Mathf.PI * 2f * 12f);
                     Color steel = new Color(brushed, brushed * 0.985f, brushed * 0.94f, 1f);
                     color = Color.Lerp(new Color(0.20f, 0.24f, 0.30f, 1f), steel,
                         Mathf.Clamp01(0.72f + collarShine * 0.28f));
