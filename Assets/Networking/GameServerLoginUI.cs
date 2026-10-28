@@ -44,6 +44,10 @@ public sealed class GameServerLoginUI : MonoBehaviour
         public string type;
         public bool success;
         public string message;
+        public string playerId;
+        public string itemId;
+        public string itemName;
+        public WorldInventoryStack[] inventory;
         public float x;
         public float y;
         public float z;
@@ -138,6 +142,16 @@ public sealed class GameServerLoginUI : MonoBehaviour
     }
 
     [Serializable]
+    private sealed class WorldInventoryStack
+    {
+        public string itemTemplate;
+        public string name;
+        public string category;
+        public bool stackable;
+        public int quantity;
+    }
+
+    [Serializable]
     private sealed class WorldTargetData
     {
         public string type;
@@ -228,6 +242,7 @@ public sealed class GameServerLoginUI : MonoBehaviour
     private bool _hasServerAttackSpeed;
     private int _playerHealth = 100;
     private int _playerMaxHealth = 100;
+    private WorldInventoryStack[] _playerInventory = Array.Empty<WorldInventoryStack>();
 
     private GUIStyle _inventoryHudButtonStyle;
     private Texture2D _inventoryHudBorderTexture;
@@ -860,6 +875,20 @@ public sealed class GameServerLoginUI : MonoBehaviour
                 ApplyWorldSnapshot(message);
                 break;
 
+            case "item_picked_up":
+                RemoveGroundItemView(message.itemId);
+                if (string.Equals(message.playerId, _authenticatedUsername, StringComparison.OrdinalIgnoreCase))
+                {
+                    _playerInventory = message.inventory ?? Array.Empty<WorldInventoryStack>();
+                    Debug.Log("Picked up " + (string.IsNullOrWhiteSpace(message.itemName) ? "item" : message.itemName) +
+                        "; inventory stacks=" + _playerInventory.Length + ".");
+                }
+                else
+                {
+                    Debug.Log("Ground item removed after pickup: " + message.itemId + ".");
+                }
+                break;
+
             case "player_state_result":
                 if (!message.success)
                 {
@@ -1066,6 +1095,11 @@ public sealed class GameServerLoginUI : MonoBehaviour
             _playerHealth = Mathf.Clamp(message.playerHealth, 0, _playerMaxHealth);
         }
 
+        if (!message.partialSnapshot)
+        {
+            _playerInventory = message.inventory ?? Array.Empty<WorldInventoryStack>();
+        }
+
         if (message.attackSpeed > 0f &&
             !float.IsNaN(message.attackSpeed) &&
             !float.IsInfinity(message.attackSpeed))
@@ -1214,6 +1248,7 @@ public sealed class GameServerLoginUI : MonoBehaviour
             if (monsterCollision != null)
             {
                 monsterCollision.isTrigger = isFalling;
+                IgnoreGroundItemCollisions(monsterCollision);
             }
 
             MonsterDeathPresentation deathPresentation = view.GetComponent<MonsterDeathPresentation>();
@@ -1719,6 +1754,7 @@ public sealed class GameServerLoginUI : MonoBehaviour
                     player.position.x,
                     player.position.y + height * 0.5f,
                     player.position.z);
+                IgnoreGroundItemCollisions(view.GetComponent<Collider>());
 
                 if (player.rotation != null)
                 {
@@ -1913,6 +1949,7 @@ public sealed class GameServerLoginUI : MonoBehaviour
             WorldTargetable targetable = view.GetComponent<WorldTargetable>();
             if (targetable == null) targetable = view.AddComponent<WorldTargetable>();
             targetable.Configure("item", item.id, displayName, null);
+            ConfigureGroundItemCollision(view.GetComponent<Collider>());
         }
 
         List<string> staleIDs = new List<string>();
@@ -1925,6 +1962,72 @@ public sealed class GameServerLoginUI : MonoBehaviour
             }
         }
         foreach (string staleID in staleIDs) _groundItemViews.Remove(staleID);
+    }
+
+    private void ConfigureGroundItemCollision(Collider itemCollider)
+    {
+        if (itemCollider == null)
+        {
+            return;
+        }
+
+        // Items are static world drops: preserve terrain contact, but ignore every other
+        // collider so a drop never blocks the player, another player, a monster or props.
+        Collider[] colliders = FindObjectsByType<Collider>(FindObjectsSortMode.None);
+        foreach (Collider other in colliders)
+        {
+            if (other == null || other == itemCollider || other is TerrainCollider)
+            {
+                continue;
+            }
+
+            Physics.IgnoreCollision(itemCollider, other, true);
+        }
+    }
+
+    private void IgnoreGroundItemCollisions(Collider actorCollider)
+    {
+        if (actorCollider == null)
+        {
+            return;
+        }
+
+        foreach (GameObject itemView in _groundItemViews.Values)
+        {
+            if (itemView == null)
+            {
+                continue;
+            }
+
+            Collider itemCollider = itemView.GetComponent<Collider>();
+            if (itemCollider != null && itemCollider != actorCollider)
+            {
+                Physics.IgnoreCollision(itemCollider, actorCollider, true);
+            }
+        }
+    }
+
+    private void RemoveGroundItemView(string itemID)
+    {
+        if (string.IsNullOrWhiteSpace(itemID))
+        {
+            return;
+        }
+
+        if (_groundItemViews.TryGetValue(itemID, out GameObject view))
+        {
+            if (view != null)
+            {
+                Destroy(view);
+            }
+            _groundItemViews.Remove(itemID);
+        }
+
+        if (_selectedTargetType == "item" &&
+            string.Equals(_selectedTargetID, itemID, StringComparison.Ordinal))
+        {
+            ApplySelectedTarget(null);
+        }
     }
 
     private bool TryGetTerrainSurfaceY(float worldX, float worldZ, out float surfaceY)
@@ -2386,6 +2489,7 @@ public sealed class GameServerLoginUI : MonoBehaviour
         _hasAppliedSpawn = false;
         _serverAttackSpeed = 1f;
         _hasServerAttackSpeed = false;
+        _playerInventory = Array.Empty<WorldInventoryStack>();
         while (_incomingMessages.TryDequeue(out _)) { }
 
         SemaphoreSlim signal;
