@@ -4,16 +4,14 @@ using UnityEngine.Rendering;
 
 /// <summary>
 /// Procedural low-poly model for the blue D-grade Soulshot reference.
-/// The item is a bright blue metallic capsule with a recessed center section covered by a flush metal braid.
+/// A single smooth capsule mesh with one dark-blue metallic texture containing the silver diamond weave.
 /// No particles, bloom, aura or billboard glow are created.
 /// </summary>
 [DisallowMultipleComponent]
 public sealed class SoulshotVisual : MonoBehaviour
 {
     private static Mesh coreMesh;
-    private static Mesh ringMesh;
     private static Material coreMaterial;
-    private static Material silverMaterial;
     private static bool built;
 
     private GameObject modelRoot;
@@ -28,8 +26,6 @@ public sealed class SoulshotVisual : MonoBehaviour
         modelRoot.transform.localScale = Vector3.one * 0.82f;
 
         AddPart("DGradeBlueMetalCapsule", coreMesh, coreMaterial, Vector3.zero, false);
-        AddPart("LowerMetalCollar", ringMesh, silverMaterial, new Vector3(0f, -0.255f, 0f), true);
-        AddPart("UpperMetalCollar", ringMesh, silverMaterial, new Vector3(0f, 0.255f, 0f), true);
 
         GameObject glowObject = new GameObject("SubtleBlueLight");
         glowObject.transform.SetParent(modelRoot.transform, false);
@@ -60,28 +56,19 @@ public sealed class SoulshotVisual : MonoBehaviour
     {
         if (built) return;
 
-        // Opaque blue metallic enamel. The body has a recessed central groove so the braid
-        // sits in the groove, with the wire tops level with the capsule's outer radius.
+        // One smooth capsule only: all braid and collar details are painted into its albedo texture.
         const float capsuleRadius = 0.278f;
-        const float grooveRadius = 0.251f;
-        const float grooveHalfLength = 0.275f;
-        const float grooveTransition = 0.04f;
-        coreMesh = BuildCapsule(capsuleRadius, 0.50f, grooveRadius,
-            grooveHalfLength, grooveTransition, 48, 16, 96);
-        ringMesh = BuildTorus(0.260f, 0.018f, 48, 10);
+        const float halfCylinder = 0.50f;
+        coreMesh = BuildCapsule(capsuleRadius, halfCylinder, 64, 24, 64);
 
-        // The diamond braid is painted into the blue enamel texture, not built from thousands
-        // of individual wire vertices. It appears on the recessed centre surface.
-        coreMaterial = MakeMaterial("Soulshot D Pepsi Blue Metallic Enamel",
-            Color.white, BuildBlueMetalTexture(), 0.52f, 0.96f, false);
+        coreMaterial = MakeMaterial("Soulshot D Pepsi Blue Metallic Capsule",
+            Color.white, BuildBlueMetalTexture(), 0.68f, 0.94f, false);
         if (coreMaterial.HasProperty("_EmissionColor"))
         {
-            // A restrained blue self-lit component preserves the luminous blue without looking liquid.
-            coreMaterial.SetColor("_EmissionColor", new Color(0.012f, 0.055f, 0.22f, 1f));
+            // Subtle blue emission, with the main appearance still coming from the metallic texture.
+            coreMaterial.SetColor("_EmissionColor", new Color(0.006f, 0.022f, 0.09f, 1f));
             coreMaterial.EnableKeyword("_EMISSION");
         }
-        silverMaterial = MakeMaterial("Soulshot Silver Diamond Braid", new Color(0.82f, 0.84f, 0.81f, 1f),
-            BuildSilverTexture(), 0.82f, 0.79f, false);
         built = true;
     }
 
@@ -131,12 +118,14 @@ public sealed class SoulshotVisual : MonoBehaviour
         const float braidHalfLength = 0.248f;
         const float capsuleRadius = 0.278f;
         const float halfCylinder = 0.50f;
-        float turns = braidHalfLength / (Mathf.PI * 0.266f);
+        const float fullLength = 2f * (halfCylinder + capsuleRadius);
+        float turns = braidHalfLength / (Mathf.PI * capsuleRadius);
+        const float collarCenter = 0.255f;
+        const float collarHalfWidth = 0.018f;
 
-        // The capsule UV maps Y from -(halfCylinder + radius) to +(halfCylinder + radius).
-        // Restrict the woven pattern to the recessed centre band.
-        float uvStart = (halfCylinder + capsuleRadius - braidHalfLength) /
-            (2f * (halfCylinder + capsuleRadius));
+        // The UV covers the complete capsule length. Restrict the weave to the centre strip;
+        // narrow silver bands at its edges are texture details, not separate objects.
+        float uvStart = (halfCylinder + capsuleRadius - braidHalfLength) / fullLength;
         float uvEnd = 1f - uvStart;
 
         Texture2D texture = new Texture2D(width, height, TextureFormat.RGBA32, true)
@@ -205,6 +194,19 @@ public sealed class SoulshotVisual : MonoBehaviour
                     }
                 }
 
+                // The two original silver collars are also painted, so the capsule stays a single mesh.
+                float lowerCollarV = 0.5f - collarCenter / fullLength;
+                float upperCollarV = 0.5f + collarCenter / fullLength;
+                float collarDistance = Mathf.Min(Mathf.Abs(v - lowerCollarV), Mathf.Abs(v - upperCollarV));
+                if (collarDistance < collarHalfWidth / fullLength)
+                {
+                    float collarShine = 1f - collarDistance / (collarHalfWidth / fullLength);
+                    float brushed = 0.84f + 0.12f * shine + 0.04f * Mathf.Sin(u * 180f);
+                    Color steel = new Color(brushed, brushed * 0.985f, brushed * 0.94f, 1f);
+                    color = Color.Lerp(new Color(0.20f, 0.24f, 0.30f, 1f), steel,
+                        Mathf.Clamp01(0.72f + collarShine * 0.28f));
+                }
+
                 pixels[y * width + x] = new Color32(
                     (byte)Mathf.Clamp(Mathf.RoundToInt(color.r * 255f), 0, 255),
                     (byte)Mathf.Clamp(Mathf.RoundToInt(color.g * 255f), 0, 255),
@@ -218,39 +220,8 @@ public sealed class SoulshotVisual : MonoBehaviour
         return texture;
     }
 
-    private static Texture2D BuildSilverTexture()
-    {
-        const int size = 128;
-        Texture2D texture = new Texture2D(size, size, TextureFormat.RGBA32, true)
-        {
-            name = "Soulshot_D_Brushed_Silver_Albedo",
-            wrapMode = TextureWrapMode.Repeat,
-            filterMode = FilterMode.Trilinear
-        };
-        Color32[] pixels = new Color32[size * size];
-        for (int y = 0; y < size; y++)
-        {
-            for (int x = 0; x < size; x++)
-            {
-                float noise = (Noise(x, y) - 0.5f) * 0.13f;
-                float brush = Mathf.Sin(y * 2.4f + Mathf.Sin(x * 0.11f) * 1.3f) * 0.045f;
-                byte channel = (byte)Mathf.RoundToInt(255f * Mathf.Clamp01(0.88f + noise + brush));
-                pixels[y * size + x] = new Color32(channel, channel, channel, 255);
-            }
-        }
-        texture.SetPixels32(pixels);
-        texture.Apply(true, false);
-        return texture;
-    }
-
-    private static float Noise(int x, int y)
-    {
-        float value = Mathf.Sin(x * 12.9898f + y * 78.233f) * 43758.5453f;
-        return value - Mathf.Floor(value);
-    }
-
-    private static Mesh BuildCapsule(float radius, float halfCylinder, float recessedRadius,
-        float recessHalfLength, float transitionWidth, int radial, int hemisphere, int bodySegments)
+    private static Mesh BuildCapsule(float radius, float halfCylinder,
+        int radial, int hemisphere, int bodySegments)
     {
         List<Vector2> profile = new List<Vector2>();
         for (int i = 1; i <= hemisphere; i++)
@@ -261,20 +232,7 @@ public sealed class SoulshotVisual : MonoBehaviour
         for (int i = 1; i <= bodySegments; i++)
         {
             float y = Mathf.Lerp(-halfCylinder, halfCylinder, i / (float)bodySegments);
-            float distanceFromCenter = Mathf.Abs(y);
-            float localRadius = radius;
-
-            if (distanceFromCenter <= recessHalfLength)
-            {
-                localRadius = recessedRadius;
-            }
-            else if (distanceFromCenter < recessHalfLength + transitionWidth)
-            {
-                float t = (distanceFromCenter - recessHalfLength) / transitionWidth;
-                localRadius = Mathf.Lerp(recessedRadius, radius, Mathf.SmoothStep(0f, 1f, t));
-            }
-
-            profile.Add(new Vector2(localRadius, y));
+            profile.Add(new Vector2(radius, y));
         }
         for (int i = 1; i < hemisphere; i++)
         {
@@ -331,48 +289,6 @@ public sealed class SoulshotVisual : MonoBehaviour
         }
 
         Mesh mesh = new Mesh { name = "Soulshot_Capsule_Mesh" };
-        mesh.SetVertices(vertices);
-        mesh.SetUVs(0, uv);
-        mesh.SetTriangles(triangles, 0);
-        mesh.RecalculateNormals();
-        mesh.RecalculateBounds();
-        return mesh;
-    }
-
-    private static Mesh BuildTorus(float majorRadius, float tubeRadius, int majorSegments, int tubeSegments)
-    {
-        List<Vector3> vertices = new List<Vector3>();
-        List<Vector2> uv = new List<Vector2>();
-        List<int> triangles = new List<int>();
-        for (int major = 0; major <= majorSegments; major++)
-        {
-            float u = major / (float)majorSegments;
-            float a = u * Mathf.PI * 2f;
-            for (int tube = 0; tube <= tubeSegments; tube++)
-            {
-                float v = tube / (float)tubeSegments;
-                float b = v * Mathf.PI * 2f;
-                float r = majorRadius + tubeRadius * Mathf.Cos(b);
-                vertices.Add(new Vector3(r * Mathf.Cos(a), tubeRadius * Mathf.Sin(b), r * Mathf.Sin(a)));
-                uv.Add(new Vector2(u, v));
-            }
-        }
-        int rowWidth = tubeSegments + 1;
-        for (int major = 0; major < majorSegments; major++)
-        {
-            for (int tube = 0; tube < tubeSegments; tube++)
-            {
-                int a = major * rowWidth + tube;
-                int b = (major + 1) * rowWidth + tube;
-                triangles.Add(a);
-                triangles.Add(a + 1);
-                triangles.Add(b);
-                triangles.Add(a + 1);
-                triangles.Add(b + 1);
-                triangles.Add(b);
-            }
-        }
-        Mesh mesh = new Mesh { name = "Soulshot_Metal_Collar_Mesh" };
         mesh.SetVertices(vertices);
         mesh.SetUVs(0, uv);
         mesh.SetTriangles(triangles, 0);
