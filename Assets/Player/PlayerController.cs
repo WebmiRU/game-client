@@ -938,10 +938,28 @@ public class PlayerController : MonoBehaviour
             return;
         }
 
-        UpdateHoveredWorldTarget();
+        Mouse mouse = Mouse.current;
+        bool pointerOverInventoryToggle = mouse != null &&
+            GameServerLoginUI.IsPointerOverInventoryToggle(mouse.position.ReadValue());
+        bool worldInputBlocked = InventoryWindowUI.IsOpen || pointerOverInventoryToggle;
 
-        // Clicking an entity selects it; clicking the selected monster again starts melee combat.
-        if (!InventoryWindowUI.IsOpen && Mouse.current != null && Mouse.current.leftButton.wasPressedThisFrame)
+        if (worldInputBlocked)
+        {
+            // UI clicks must never select targets, issue attacks, or start click-to-move.
+            if (_hoveredWorldTarget != null)
+            {
+                _hoveredWorldTarget.SetHovered(false);
+                _hoveredWorldTarget = null;
+            }
+        }
+        else
+        {
+            UpdateHoveredWorldTarget();
+        }
+
+        // The inventory toggle is IMGUI, so exclude its screen rectangle explicitly:
+        // EventSystem.IsPointerOverGameObject does not detect IMGUI controls.
+        if (!worldInputBlocked && mouse != null && mouse.leftButton.wasPressedThisFrame)
         {
             TrySetMoveTargetFromMouse();
         }
