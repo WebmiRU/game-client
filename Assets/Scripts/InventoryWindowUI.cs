@@ -40,6 +40,7 @@ public sealed class InventoryWindowUI : MonoBehaviour
     // always-visible inventory toggle. The older Canvas layout remains only as a
     // source for the character preview texture.
     private Texture2D _inventoryFrameTexture;
+    private bool _inventoryFrameIsResource;
     private Texture2D _guiWhiteTexture;
     private Texture2D _guiTransparentTexture;
     private GUIStyle _guiTitleStyle;
@@ -69,7 +70,18 @@ public sealed class InventoryWindowUI : MonoBehaviour
     {
         _instance = this;
         uiFont = Resources.GetBuiltinResource<Font>("Arial.ttf");
-        _inventoryFrameTexture = Resources.Load<Texture2D>("inventory_current") ?? CreateInventoryFrameTexture();
+        Texture2D loadedFrame = Resources.Load<Texture2D>("inventory_current");
+        _inventoryFrameIsResource = loadedFrame != null;
+        _inventoryFrameTexture = loadedFrame != null ? loadedFrame : CreateInventoryFrameTexture();
+
+        if (_inventoryFrameIsResource)
+        {
+            Debug.Log($"InventoryWindowUI: custom frame loaded from Resources ({loadedFrame.width}x{loadedFrame.height}).", this);
+        }
+        else
+        {
+            Debug.LogError("InventoryWindowUI: Assets/Resources/inventory_current.png was not imported as a Texture2D; showing the procedural fallback frame.", this);
+        }
         EnsureEventSystem();
         BuildCanvasAndWindow();
         window.SetActive(false);
@@ -101,7 +113,7 @@ public sealed class InventoryWindowUI : MonoBehaviour
         DestroyPreviewResources();
         if (_guiWhiteTexture != null) Destroy(_guiWhiteTexture);
         if (_guiTransparentTexture != null) Destroy(_guiTransparentTexture);
-        if (_inventoryFrameTexture != null) Destroy(_inventoryFrameTexture);
+        if (_inventoryFrameTexture != null && !_inventoryFrameIsResource) Destroy(_inventoryFrameTexture);
     }
 
     /// <summary>Entry point used by the always-visible server HUD.</summary>
