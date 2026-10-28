@@ -333,7 +333,7 @@ public sealed class NewInventoryWindowUI : MonoBehaviour
         float scaleX = frameRect.width / 640f;
         float scaleY = frameRect.height / 360f;
         float lineWidth = Mathf.Max(1f, Mathf.Min(scaleX, scaleY));
-        Color dividerColor = new Color(0.27f, 0.20f, 0.13f, 0.92f);
+        Color dividerColor = new Color(1.00f, 0.78f, 0.22f, 0.98f);
 
         // One common outer border. Individual cells have no separate fills, shadows or bevels.
         DrawSolidRect(new Rect(gridRect.x, gridRect.y, gridRect.width, lineWidth), dividerColor);
