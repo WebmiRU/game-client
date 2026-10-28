@@ -44,7 +44,7 @@ public sealed class SoulshotVisual : MonoBehaviour
         // Keep just a subtle blue tint on nearby surfaces; the capsule should read as matte,
         // not as a glowing or highly polished object.
         blueLight.intensity = 0.22f;
-        blueLight.range = 0.85f;
+        blueLight.range = 0.425f;
         blueLight.shadows = LightShadows.None;
     }
 
