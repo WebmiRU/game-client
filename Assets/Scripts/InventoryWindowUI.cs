@@ -39,6 +39,7 @@ public sealed class InventoryWindowUI : MonoBehaviour
     // The inventory is drawn through IMGUI for a reliable overlay, matching the
     // always-visible inventory toggle. The older Canvas layout remains only as a
     // source for the character preview texture.
+    private Texture2D _inventoryFrameTexture;
     private Texture2D _guiWhiteTexture;
     private Texture2D _guiTransparentTexture;
     private GUIStyle _guiTitleStyle;
@@ -68,6 +69,7 @@ public sealed class InventoryWindowUI : MonoBehaviour
     {
         _instance = this;
         uiFont = Resources.GetBuiltinResource<Font>("Arial.ttf");
+        _inventoryFrameTexture = CreateInventoryFrameTexture();
         EnsureEventSystem();
         BuildCanvasAndWindow();
         window.SetActive(false);
@@ -99,6 +101,7 @@ public sealed class InventoryWindowUI : MonoBehaviour
         DestroyPreviewResources();
         if (_guiWhiteTexture != null) Destroy(_guiWhiteTexture);
         if (_guiTransparentTexture != null) Destroy(_guiTransparentTexture);
+        if (_inventoryFrameTexture != null) Destroy(_inventoryFrameTexture);
     }
 
     /// <summary>Entry point used by the always-visible server HUD.</summary>
@@ -196,18 +199,25 @@ public sealed class InventoryWindowUI : MonoBehaviour
         Color oldGuiColor = GUI.color;
 
         Rect frame = new Rect(x, y, width, height);
-        DrawOrnateFrame(frame, scale);
+        if (_inventoryFrameTexture == null)
+            DrawOrnateFrame(frame, scale);
+        else
+            DrawGuiRect(frame, new Color(0.010f, 0.008f, 0.006f, 1f));
         Rect surface = InsetGuiRect(frame, 10f * scale);
 
         Rect header = new Rect(surface.x + 2f * scale, surface.y + 2f * scale,
             surface.width - 4f * scale, 50f * scale);
         DrawGuiRect(header, new Color(0.072f, 0.057f, 0.039f, 1f));
-        DrawTopHeaderOrnament(header, scale);
-        GUI.Label(new Rect(header.center.x - 118f * scale, header.y + 16f * scale,
-            236f * scale, 28f * scale), "Инвентарь", _guiTitleStyle);
+        if (_inventoryFrameTexture == null)
+        {
+            DrawTopHeaderOrnament(header, scale);
+            GUI.Label(new Rect(header.center.x - 118f * scale, header.y + 16f * scale,
+                236f * scale, 28f * scale), "Инвентарь", _guiTitleStyle);
+        }
 
+        float dragHeight = _inventoryFrameTexture != null ? 96f * scale : header.height - 2f * scale;
         Rect dragRect = new Rect(header.x + 8f * scale, header.y + 1f * scale,
-            header.width - 82f * scale, header.height - 2f * scale);
+            header.width - 82f * scale, dragHeight);
 
         Rect closeRect = new Rect(frame.xMax - 50f * scale, frame.y + 14f * scale,
             32f * scale, 30f * scale);
@@ -218,8 +228,9 @@ public sealed class InventoryWindowUI : MonoBehaviour
             return;
         }
 
-        float panelY = y + 70f * scale;
-        float panelHeight = height - 102f * scale;
+        // Leave a separate title zone under the larger central crest.
+        float panelY = y + (_inventoryFrameTexture != null ? 128f : 70f) * scale;
+        float panelHeight = height - (_inventoryFrameTexture != null ? 160f : 102f) * scale;
         float leftX = x + 18f * scale;
         float leftWidth = 440f * scale;
         float rightX = x + 468f * scale;
@@ -323,6 +334,17 @@ public sealed class InventoryWindowUI : MonoBehaviour
         Rect trashRect = new Rect(rightPanel.xMax - 70f * scale, footerY + 4f * scale,
             48f * scale, 42f * scale);
         DrawInventoryButton(trashRect, "▣", new Color(0.13f, 0.12f, 0.1f, 1f));
+
+        // Render the full-frame overlay after all panel fills; its center is transparent.
+        if (_inventoryFrameTexture != null)
+        {
+            GUI.color = Color.white;
+            GUI.DrawTexture(frame, _inventoryFrameTexture, ScaleMode.StretchToFill, true);
+            GUI.color = oldGuiColor;
+            GUI.Label(new Rect(frame.center.x - 118f * scale, frame.y + 86f * scale,
+                236f * scale, 28f * scale), "Инвентарь", _guiTitleStyle);
+            GUI.Label(closeRect, "×", _guiButtonStyle);
+        }
 
         GUI.color = oldGuiColor;
 
@@ -432,6 +454,202 @@ public sealed class InventoryWindowUI : MonoBehaviour
         GUI.color = color;
         GUI.DrawTexture(rect, _guiWhiteTexture, ScaleMode.StretchToFill, false);
         GUI.color = previous;
+    }
+
+    private static Texture2D CreateInventoryFrameTexture()
+    {
+        const int width = 800;
+        const int height = 450;
+        var pixels = new Color32[width * height];
+        var shadow = new Color32(9, 7, 5, 255);
+        var black = new Color32(17, 13, 9, 255);
+        var deep = new Color32(35, 27, 18, 255);
+        var bronze = new Color32(83, 62, 39, 255);
+        var mid = new Color32(111, 83, 51, 255);
+        var edge = new Color32(142, 108, 67, 255);
+        var highlight = new Color32(187, 149, 98, 235);
+        var soft = new Color32(68, 52, 34, 255);
+
+        FillTextureRect(pixels, width, height, 4, 8, 796, 442, shadow);
+        FillTextureRect(pixels, width, height, 7, 10, 793, 439, bronze);
+        FillTextureRect(pixels, width, height, 10, 13, 790, 436, black);
+        FillTextureRect(pixels, width, height, 12, 15, 788, 434, mid);
+        FillTextureRect(pixels, width, height, 15, 18, 785, 431, deep);
+        FillTextureRect(pixels, width, height, 22, 25, 778, 424, new Color32(0, 0, 0, 0));
+
+        DrawTextureLine(pixels, width, height, new Vector2(30, 20), new Vector2(339, 20), highlight, 2);
+        DrawTextureLine(pixels, width, height, new Vector2(461, 20), new Vector2(770, 20), highlight, 2);
+        DrawTextureLine(pixels, width, height, new Vector2(30, 23), new Vector2(339, 23), soft, 1);
+        DrawTextureLine(pixels, width, height, new Vector2(461, 23), new Vector2(770, 23), soft, 1);
+        DrawTextureLine(pixels, width, height, new Vector2(30, 428), new Vector2(770, 428), soft, 1);
+        DrawTextureLine(pixels, width, height, new Vector2(30, 431), new Vector2(770, 431), bronze, 2);
+        DrawTextureLine(pixels, width, height, new Vector2(20, 42), new Vector2(20, 405), edge, 2);
+        DrawTextureLine(pixels, width, height, new Vector2(23, 42), new Vector2(23, 405), soft, 1);
+        DrawTextureLine(pixels, width, height, new Vector2(780, 42), new Vector2(780, 405), edge, 2);
+        DrawTextureLine(pixels, width, height, new Vector2(777, 42), new Vector2(777, 405), soft, 1);
+        DrawTextureLine(pixels, width, height, new Vector2(33, 31), new Vector2(330, 31), highlight, 1);
+        DrawTextureLine(pixels, width, height, new Vector2(470, 31), new Vector2(767, 31), highlight, 1);
+        DrawTextureLine(pixels, width, height, new Vector2(33, 417), new Vector2(767, 417), bronze, 1);
+
+        for (int right = 0; right < 2; right++)
+        {
+            for (int bottom = 0; bottom < 2; bottom++)
+            {
+                int sx = right == 0 ? 1 : -1;
+                int sy = bottom == 0 ? 1 : -1;
+                float cx = right == 0 ? 29f : 771f;
+                float cy = bottom == 0 ? 32f : 418f;
+                DrawFrameScroll(pixels, width, height, cx, cy, sx, sy, shadow, 4);
+                DrawFrameScroll(pixels, width, height, cx, cy, sx, sy, mid, 2);
+                DrawTextureDiamond(pixels, width, height, cx + sx * 5f, cy + sy * 5f, 5, mid, highlight);
+            }
+        }
+
+        for (int side = -1; side <= 1; side += 2)
+        {
+            DrawTextureBezier(pixels, width, height,
+                new Vector2(400, 40), new Vector2(400 + side * 21, 42),
+                new Vector2(400 + side * 34, 20), new Vector2(400 + side * 64, 24), shadow, 4);
+            DrawTextureBezier(pixels, width, height,
+                new Vector2(400, 40), new Vector2(400 + side * 21, 42),
+                new Vector2(400 + side * 34, 20), new Vector2(400 + side * 64, 24), mid, 2);
+            DrawTextureBezier(pixels, width, height,
+                new Vector2(402, 39), new Vector2(402 + side * 23, 41),
+                new Vector2(402 + side * 36, 19), new Vector2(402 + side * 66, 23), highlight, 1);
+            DrawTextureBezier(pixels, width, height,
+                new Vector2(402, 40), new Vector2(423, 51),
+                new Vector2(439, 42), new Vector2(448, 34), mid, 2);
+            DrawTextureBezier(pixels, width, height,
+                new Vector2(450, 24), new Vector2(468, 30),
+                new Vector2(476, 22), new Vector2(490, 26), mid, 2);
+            DrawTextureBezier(pixels, width, height,
+                new Vector2(462, 28), new Vector2(482, 36),
+                new Vector2(504, 31), new Vector2(519, 26), highlight, 1);
+        }
+        DrawTextureDiamond(pixels, width, height, 400, 18, 13, mid, highlight);
+        DrawTextureDiamond(pixels, width, height, 20, 225, 7, mid, highlight);
+        DrawTextureDiamond(pixels, width, height, 780, 225, 7, mid, highlight);
+        DrawTextureDiamond(pixels, width, height, 400, 431, 9, mid, highlight);
+        DrawTextureLine(pixels, width, height, new Vector2(29, 195), new Vector2(37, 205), mid, 2);
+        DrawTextureLine(pixels, width, height, new Vector2(37, 205), new Vector2(37, 245), mid, 2);
+        DrawTextureLine(pixels, width, height, new Vector2(37, 245), new Vector2(29, 255), mid, 2);
+        DrawTextureLine(pixels, width, height, new Vector2(771, 195), new Vector2(763, 205), mid, 2);
+        DrawTextureLine(pixels, width, height, new Vector2(763, 205), new Vector2(763, 245), mid, 2);
+        DrawTextureLine(pixels, width, height, new Vector2(763, 245), new Vector2(771, 255), mid, 2);
+
+        var texture = new Texture2D(width, height, TextureFormat.RGBA32, false);
+        texture.name = "InventoryFrame_Runtime";
+        texture.filterMode = FilterMode.Bilinear;
+        texture.wrapMode = TextureWrapMode.Clamp;
+        texture.hideFlags = HideFlags.HideAndDontSave;
+        texture.SetPixels32(pixels);
+        texture.Apply(false, true);
+        return texture;
+    }
+
+    private static void DrawFrameScroll(Color32[] pixels, int width, int height,
+        float cx, float cy, int sx, int sy, Color32 color, int thickness)
+    {
+        Vector2 p0 = new Vector2(cx, cy);
+        DrawTextureBezier(pixels, width, height, p0,
+            new Vector2(cx - sx, cy + sy * 18), new Vector2(cx + sx * 7, cy + sy * 8),
+            new Vector2(cx + sx * 28, cy + sy), color, thickness);
+        DrawTextureBezier(pixels, width, height, new Vector2(cx + sx * 2, cy + sy * 34),
+            new Vector2(cx + sx * 19, cy + sy * 34), new Vector2(cx + sx * 13, cy + sy * 18),
+            new Vector2(cx + sx * 31, cy + sy * 10), color, thickness);
+        DrawTextureBezier(pixels, width, height, new Vector2(cx + sx * 8, cy + sy * 40),
+            new Vector2(cx + sx * 22, cy + sy * 31), new Vector2(cx + sx * 30, cy + sy * 18),
+            new Vector2(cx + sx * 43, cy + sy * 18), color, thickness);
+        DrawTextureBezier(pixels, width, height, new Vector2(cx, cy + sy * 17),
+            new Vector2(cx + sx * 7, cy + sy * 9), new Vector2(cx + sx * 14, cy + sy * 9),
+            new Vector2(cx + sx * 19, cy + sy * 16), color, thickness);
+        DrawTextureBezier(pixels, width, height, new Vector2(cx + sx * 18, cy + sy * 4),
+            new Vector2(cx + sx * 32, cy + sy), new Vector2(cx + sx * 41, cy + sy * 6),
+            new Vector2(cx + sx * 45, cy + sy * 13), color, thickness);
+    }
+
+    private static void DrawTextureDiamond(Color32[] pixels, int width, int height,
+        float cx, float cy, int radius, Color32 fill, Color32 highlight)
+    {
+        for (int dy = -radius; dy <= radius; dy++)
+        {
+            int halfWidth = radius - Mathf.Abs(dy);
+            for (int dx = -halfWidth; dx <= halfWidth; dx++)
+            {
+                int x = Mathf.RoundToInt(cx) + dx;
+                int y = Mathf.RoundToInt(cy) + dy;
+                SetTexturePixel(pixels, width, height, x, y, fill);
+            }
+        }
+        DrawTextureLine(pixels, width, height, new Vector2(cx, cy - radius),
+            new Vector2(cx - radius, cy), highlight, 1);
+        DrawTextureLine(pixels, width, height, new Vector2(cx, cy - radius),
+            new Vector2(cx + radius, cy), highlight, 1);
+        DrawTextureLine(pixels, width, height, new Vector2(cx - radius, cy),
+            new Vector2(cx, cy + radius), shadowColorForDiamond, 1);
+        DrawTextureLine(pixels, width, height, new Vector2(cx + radius, cy),
+            new Vector2(cx, cy + radius), shadowColorForDiamond, 1);
+    }
+
+    private static readonly Color32 shadowColorForDiamond = new Color32(9, 7, 5, 255);
+
+    private static void DrawTextureBezier(Color32[] pixels, int width, int height,
+        Vector2 p0, Vector2 p1, Vector2 p2, Vector2 p3, Color32 color, int thickness)
+    {
+        const int segments = 40;
+        Vector2 previous = p0;
+        for (int i = 1; i <= segments; i++)
+        {
+            float t = i / (float)segments;
+            float u = 1f - t;
+            Vector2 current = u * u * u * p0 + 3f * u * u * t * p1
+                + 3f * u * t * t * p2 + t * t * t * p3;
+            DrawTextureLine(pixels, width, height, previous, current, color, thickness);
+            previous = current;
+        }
+    }
+
+    private static void DrawTextureLine(Color32[] pixels, int width, int height,
+        Vector2 start, Vector2 end, Color32 color, int thickness)
+    {
+        int steps = Mathf.Max(1, Mathf.CeilToInt(Vector2.Distance(start, end)));
+        int radius = Mathf.Max(0, thickness / 2);
+        for (int i = 0; i <= steps; i++)
+        {
+            float t = i / (float)steps;
+            int cx = Mathf.RoundToInt(Mathf.Lerp(start.x, end.x, t));
+            int cy = Mathf.RoundToInt(Mathf.Lerp(start.y, end.y, t));
+            for (int dy = -radius; dy <= radius; dy++)
+            {
+                for (int dx = -radius; dx <= radius; dx++)
+                {
+                    if (dx * dx + dy * dy > radius * radius + 1) continue;
+                    SetTexturePixel(pixels, width, height, cx + dx, cy + dy, color);
+                }
+            }
+        }
+    }
+
+    private static void FillTextureRect(Color32[] pixels, int width, int height,
+        int xMin, int yMin, int xMax, int yMax, Color32 color)
+    {
+        xMin = Mathf.Clamp(xMin, 0, width);
+        xMax = Mathf.Clamp(xMax, 0, width);
+        yMin = Mathf.Clamp(yMin, 0, height);
+        yMax = Mathf.Clamp(yMax, 0, height);
+        for (int y = yMin; y < yMax; y++)
+        {
+            int row = (height - 1 - y) * width;
+            for (int x = xMin; x < xMax; x++)
+                pixels[row + x] = color;
+        }
+    }
+
+    private static void SetTexturePixel(Color32[] pixels, int width, int height,
+        int x, int y, Color32 color)
+    {
+        if (x < 0 || x >= width || y < 0 || y >= height) return;
+        pixels[(height - 1 - y) * width + x] = color;
     }
 
     private bool DrawInventoryButton(Rect rect, string label, Color normalColor)
