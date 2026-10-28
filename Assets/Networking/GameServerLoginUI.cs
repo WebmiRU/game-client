@@ -439,6 +439,29 @@ public sealed class GameServerLoginUI : MonoBehaviour
         GUILayout.EndArea();
 
         DrawInventoryToggle();
+        // Draw the window in this proven, active IMGUI pass instead of relying on a
+        // separate component's OnGUI callback.
+        InventoryWindowUI.DrawOverlayFromHUD();
+    }
+
+    /// <summary>
+    /// IMGUI uses top-left screen coordinates; Input System pointer positions use
+    /// bottom-left coordinates. This identifies clicks on the inventory HUD button
+    /// before PlayerController treats the same press as a world click.
+    /// </summary>
+    public static bool IsPointerOverInventoryToggle(Vector2 pointerBottomLeft)
+    {
+        float scale = Mathf.Clamp(Screen.width / 1920f, 0.8f, 1.5f);
+        float width = 370f * scale;
+        float height = 76f * scale;
+        float margin = 22f * scale;
+        Rect guiRect = new Rect(
+            Screen.width - width - margin,
+            Screen.height - height - margin,
+            width,
+            height);
+        Vector2 guiPosition = new Vector2(pointerBottomLeft.x, Screen.height - pointerBottomLeft.y);
+        return guiRect.Contains(guiPosition);
     }
 
     private void DrawInventoryToggle()
