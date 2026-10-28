@@ -223,7 +223,6 @@ public sealed class InventoryWindowUI : MonoBehaviour
 
         Rect dragRect = new Rect(header.x + 8f * scale, header.y + 1f * scale,
             header.width - 82f * scale, header.height - 2f * scale);
-        HandleWindowDragging(dragRect, width, height);
 
         Rect closeRect = new Rect(frame.xMax - 50f * scale, frame.y + 14f * scale,
             32f * scale, 30f * scale);
@@ -341,6 +340,11 @@ public sealed class InventoryWindowUI : MonoBehaviour
         DrawInventoryButton(trashRect, "▣", new Color(0.13f, 0.12f, 0.1f, 1f));
 
         GUI.color = oldGuiColor;
+
+        // Handle mouse events only after every part of the window has been drawn.
+        // Event.Use() during MouseDrag prevented the grid from being repainted and
+        // made it flicker while the window was moving.
+        HandleWindowDragging(dragRect, width, height);
     }
 
     private void EnsureInventoryGuiStyles()
@@ -592,18 +596,15 @@ public sealed class InventoryWindowUI : MonoBehaviour
             _draggingWindow = true;
             _dragMouseStart = current.mousePosition;
             _dragWindowStart = _windowPosition;
-            current.Use();
         }
         else if (_draggingWindow && current.type == EventType.MouseDrag && current.button == 0)
         {
             _windowPosition = _dragWindowStart + current.mousePosition - _dragMouseStart;
             ClampWindowPosition(width, height);
-            current.Use();
         }
         else if (_draggingWindow && current.type == EventType.MouseUp && current.button == 0)
         {
             _draggingWindow = false;
-            current.Use();
         }
     }
 
