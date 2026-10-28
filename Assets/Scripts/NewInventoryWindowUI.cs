@@ -12,6 +12,7 @@ public sealed class NewInventoryWindowUI : MonoBehaviour
 
     private static NewInventoryWindowUI _instance;
     private Texture2D _frameTexture;
+    private Color32[] _frameAlphaPixels;
     private Texture2D _blueBackgroundTexture;
     private Vector2 _windowPosition;
     private Vector2 _dragOffset;
@@ -50,6 +51,11 @@ public sealed class NewInventoryWindowUI : MonoBehaviour
         if (_frameTexture == null)
         {
             Debug.LogError("NewInventoryWindowUI: cannot load Assets/Resources/NewInventoryFrame.png.", this);
+        }
+        else
+        {
+            // Cache the source alpha once so transparent padding never acts as a hit target.
+            _frameAlphaPixels = _frameTexture.GetPixels32();
         }
 
         // One solid pixel is stretched only across the inner opening of the frame.
@@ -99,7 +105,7 @@ public sealed class NewInventoryWindowUI : MonoBehaviour
 
         if (mouse.leftButton.wasPressedThisFrame)
         {
-            if (frameRect.Contains(pointer))
+            if (CanBeginWindowDrag(frameRect, pointer))
             {
                 _isDragging = true;
                 _dragOffset = pointer - frameRect.position;
@@ -141,7 +147,56 @@ public sealed class NewInventoryWindowUI : MonoBehaviour
     private bool IsPointerInsideWindow(Vector2 pointerBottomLeft)
     {
         Vector2 pointer = ToGuiPosition(pointerBottomLeft);
-        return GetFrameRect().Contains(pointer);
+        Rect frameRect = GetFrameRect();
+
+        // Clicking cells should block world clicks, but it must not start dragging.
+        return GetBackgroundRect(frameRect).Contains(pointer) ||
+            IsPointerOnVisibleFrame(frameRect, pointer);
+    }
+
+    private bool CanBeginWindowDrag(Rect frameRect, Vector2 pointer)
+    {
+        // Only opaque pixels of the decorative frame are draggable; its transparent
+        // texture padding is not part of the physical window.
+        if (IsPointerOnVisibleFrame(frameRect, pointer))
+        {
+            return true;
+        }
+
+        // The blue backing is draggable except for the inventory cell grid itself.
+        Rect backgroundRect = GetBackgroundRect(frameRect);
+        return backgroundRect.Contains(pointer) &&
+            !GetInventoryGridRect(frameRect).Contains(pointer);
+    }
+
+    private bool IsPointerOnVisibleFrame(Rect frameRect, Vector2 pointer)
+    {
+        if (_frameTexture == null || _frameAlphaPixels == null ||
+            _frameTexture.width <= 0 || _frameTexture.height <= 0 ||
+            !frameRect.Contains(pointer))
+        {
+            return false;
+        }
+
+        float u = (pointer.x - frameRect.x) / frameRect.width;
+        float vFromTop = (pointer.y - frameRect.y) / frameRect.height;
+        int pixelX = Mathf.Clamp(Mathf.FloorToInt(u * _frameTexture.width), 0, _frameTexture.width - 1);
+        int pixelY = Mathf.Clamp(
+            Mathf.FloorToInt((1f - vFromTop) * _frameTexture.height),
+            0,
+            _frameTexture.height - 1);
+
+        return _frameAlphaPixels[pixelY * _frameTexture.width + pixelX].a > 12;
+    }
+
+    private Rect GetBackgroundRect(Rect frameRect)
+    {
+        // Match the exact blue rectangle drawn beneath the frame.
+        return new Rect(
+            frameRect.x + frameRect.width * (31f / 640f),
+            frameRect.y + frameRect.height * (44f / 360f),
+            frameRect.width * (578f / 640f),
+            frameRect.height * (280f / 360f));
     }
 
     private static Vector2 ToGuiPosition(Vector2 pointerBottomLeft)
@@ -212,13 +267,8 @@ public sealed class NewInventoryWindowUI : MonoBehaviour
         Rect frameRect = GetFrameRect();
         Color previousColor = GUI.color;
 
-        // The frame is 640x360. This inset matches its visible inner opening;
-        // the blue is a plain rectangle, not a separate polygon or mask image.
-        Rect backgroundRect = new Rect(
-            frameRect.x + frameRect.width * (31f / 640f),
-            frameRect.y + frameRect.height * (44f / 360f),
-            frameRect.width * (578f / 640f),
-            frameRect.height * (280f / 360f));
+        // The frame is 640x360. This matches the exact backing used by hit testing.
+        Rect backgroundRect = GetBackgroundRect(frameRect);
 
         if (_blueBackgroundTexture != null)
         {
@@ -238,14 +288,13 @@ public sealed class NewInventoryWindowUI : MonoBehaviour
         GUI.color = previousColor;
     }
 
-    private void DrawInventoryGrid(Rect frameRect)
+    private Rect GetInventoryGridRect(Rect frameRect)
     {
-        // Seven columns by nine rows. The cells remain the same blue as the
-        // surrounding background; only the shared border and thin dividers are drawn.
+        // Keep the requested 7 columns x 9 rows, but size each cell as a square.
         const float innerLeft = 31f;
         const float innerWidth = 578f;
         const float gridTop = 66f;
-        const float gridHeight = 232f;
+        const float availableGridHeight = 232f;
         const int columns = 7;
         const int rows = 9;
 
@@ -254,11 +303,26 @@ public sealed class NewInventoryWindowUI : MonoBehaviour
         float areaX = innerLeft + innerWidth / 3f;
         float areaWidth = innerWidth * 2f / 3f;
 
-        Rect gridRect = new Rect(
-            frameRect.x + areaX * scaleX,
-            frameRect.y + gridTop * scaleY,
-            areaWidth * scaleX,
+        // Use the largest square that fits inside the intended grid area.
+        float cellSize = Mathf.Min(areaWidth / columns, availableGridHeight / rows);
+        float gridWidth = cellSize * columns;
+        float gridHeight = cellSize * rows;
+        float gridX = areaX + (areaWidth - gridWidth) * 0.5f;
+        float gridY = gridTop + (availableGridHeight - gridHeight) * 0.5f;
+
+        return new Rect(
+            frameRect.x + gridX * scaleX,
+            frameRect.y + gridY * scaleY,
+            gridWidth * scaleX,
             gridHeight * scaleY);
+    }
+
+    private void DrawInventoryGrid(Rect frameRect)
+    {
+        // Cells share the plain blue backing; only a common border and slim dividers are drawn.
+        const int columns = 7;
+        const int rows = 9;
+        Rect gridRect = GetInventoryGridRect(frameRect);
 
         if (_blueBackgroundTexture == null || gridRect.width <= 0f || gridRect.height <= 0f)
         {
@@ -266,11 +330,12 @@ public sealed class NewInventoryWindowUI : MonoBehaviour
         }
 
         Color previousColor = GUI.color;
+        float scaleX = frameRect.width / 640f;
+        float scaleY = frameRect.height / 360f;
         float lineWidth = Mathf.Max(1f, Mathf.Min(scaleX, scaleY));
         Color dividerColor = new Color(0.27f, 0.20f, 0.13f, 0.92f);
 
-        // One common outer border; there are no brown cell fills, shadows, bevels,
-        // raised edges or highlighted corners.
+        // One common outer border. Individual cells have no separate fills, shadows or bevels.
         DrawSolidRect(new Rect(gridRect.x, gridRect.y, gridRect.width, lineWidth), dividerColor);
         DrawSolidRect(new Rect(gridRect.x, gridRect.yMax - lineWidth, gridRect.width, lineWidth), dividerColor);
         DrawSolidRect(new Rect(gridRect.x, gridRect.y, lineWidth, gridRect.height), dividerColor);
