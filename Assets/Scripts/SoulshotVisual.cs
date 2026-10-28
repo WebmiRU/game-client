@@ -17,7 +17,7 @@ public sealed class SoulshotVisual : MonoBehaviour
     // Shared visual/collision dimensions. The capsule lies on its side in the world.
     public const float CapsuleRadius = 0.278f;
     public const float CapsuleHalfCylinder = 0.50f;
-    public const float ModelScale = 0.82f;
+    public const float ModelScale = 0.41f;
     public const float GroundClearance = 0.005f;
     public const float GroundCenterOffset = CapsuleRadius * ModelScale + GroundClearance;
     public const float CollisionRadius = CapsuleRadius * ModelScale;
