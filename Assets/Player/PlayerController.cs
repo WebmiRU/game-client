@@ -1207,6 +1207,8 @@ public class PlayerController : MonoBehaviour
             bool isAttackableTarget =
                 System.String.Equals(clickedTarget.TargetType, "monster", System.StringComparison.OrdinalIgnoreCase) ||
                 System.String.Equals(clickedTarget.TargetType, "player", System.StringComparison.OrdinalIgnoreCase);
+            bool isGroundItem = System.String.Equals(
+                clickedTarget.TargetType, "item", System.StringComparison.OrdinalIgnoreCase);
 
             if (alreadySelected && isAttackableTarget)
             {
@@ -1216,11 +1218,37 @@ public class PlayerController : MonoBehaviour
             }
             else
             {
-                // Selecting a different entity changes only the UI target. It must not
-                // cancel an existing move order or retarget an active melee command.
                 if (_gameServerLogin != null)
                 {
                     _gameServerLogin.SelectTarget(clickedTarget);
+                }
+
+                if (isGroundItem)
+                {
+                    // Picking up is an explicit command: walking past a drop never picks it up.
+                    // The server only transfers it to inventory after the accepted player
+                    // position enters the 0.5 m pickup radius.
+                    CancelMeleeAttack();
+                    Vector3 itemPosition = clickedTarget.transform.position;
+                    if (TryGetTerrainSurfaceY(itemPosition, out float itemGroundY))
+                    {
+                        itemPosition.y = itemGroundY;
+                    }
+
+                    _targetPosition = itemPosition;
+                    _hasMoveTarget = true;
+                    _hasSentNetworkState = false;
+                    _nextNetworkSyncTime = 0f;
+
+                    if (_moveTargetInstance != null)
+                    {
+                        _moveTargetInstance.transform.SetPositionAndRotation(
+                            _targetPosition, Quaternion.identity);
+                        _moveTargetInstance.SetActive(true);
+                    }
+
+                    Debug.Log("Moving to ground item: " + clickedTarget.DisplayName +
+                        " (ID " + clickedTarget.TargetID + ").");
                 }
             }
 
